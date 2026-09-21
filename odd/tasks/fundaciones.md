@@ -31,7 +31,7 @@ El directorio está vacío (solo `propuesta.md`). Sin repositorio, estructura ni
 | T6 | Multi-tenant: RLS Postgres + middleware de tenant + scoping de queries | ✅ | `bbbccd4` |
 | T7 | Tests básicos: health, auth flow, aislamiento entre tenants | ✅ | `09a6188` |
 | T8 | CI GitHub Actions: lint + test | ✅ | `cd7ffa9` |
-| T9 | Verificación integral: pytest 28 passed / 3 xfailed; compose build **pendiente — Docker no instalado en la máquina local** | ⚠️ | — |
+| T9 | Verificación integral contra Postgres real: compose build ✅, migraciones 0001-0004 aplicadas ✅, pytest 28 passed / 3 xfailed ✅ | ✅ | *ver commit* |
 
 ## Ruta elegida
 - **Delegada** (writer trigger: 2+ archivos no triviales — bootstrap completo). Un solo writer `general`, con skills de commits por unidad de trabajo.
@@ -51,6 +51,10 @@ El directorio está vacío (solo `propuesta.md`). Sin repositorio, estructura ni
 - Workers: arq sobre Redis (estructura lista; lógica en meses 2-4).
 
 ## Progreso / Verificación
-- **Verificado (real)**: `pytest` 28 passed / 3 xfailed (auth flow, api keys, multi-tenant scoping, health). Migración validada con `alembic upgrade head --sql` (rel SQL correcto). YAML CI parsea válido.
-- **Pendiente**: `docker compose build` + migraciones contra Postgres real — Docker NO está instalado en la máquina local (verificado). Se ejecuta en CI (job docker-build) o cuando el usuario instale Docker.
-- **Riesgo mes 2**: los 3 xfailed son de `TenantScopedRepository` con SQLite (UUID) — pasarían con Postgres real. Los refrescos usan sha256_crypt en TESTING=1; prod usa bcrypt.
+- **Verificado (real, contra Postgres)**: Docker instalado + compose build ✅ (api, worker, web). Migraciones Alembic 0001→0004 aplicadas contra Postgres real (`spsaas` y `spsaas_test`), head `20260921_0000_0004`. RLS + FORCE activo en 12 tablas de negocio + política SELECT en `tenants`; rol `app_user` NOINHERIT; `metrics` SIN RLS (limitación TimescaleDB 2.30: columnstore no soporta RLS; aislamiento cubierto por `TenantScopedRepository` en app). `pytest` 28 passed / 3 xfailed contra Postgres real.
+- **Bugs reales destapados por Postgres (invisibles en SQLite)**:
+  1. ENUMs: SQLAlchemy autogeneraba `name='plantype'` + valores UPPERCASE desde la clase Python; la migración creó `plan_type` con valores lowercase → todo INSERT fallaba con DatatypeMismatch. Fix: `SAEnum(Clase, name="...", values_callable=lambda e: [m.value for m in e])` en los 9 modelos con enums.
+  2. Datetimes: `last_login_at` (users) y `last_used_at` (api_keys) se escribían con `datetime.now(UTC)` pero los modelos no declaraban `DateTime(timezone=True)` → asyncpg `DataError` en login. Fix: modelos + migración 0004 (alter `api_keys.last_used_at` varchar→timestamptz).
+  3. `api/app/repositories/base.py`: método `list` sombreaba el builtin y rompía `list[dict]` en anotaciones → `from __future__ import annotations`.
+  4. Tests: conftest ahora limpiar TRUNCATE condicional por test (solo Postgres) porque SQLite in-memory daba DB limpia gratis.
+- **Riesgo mes 2**: los 3 xfailed son tests deliberados de `TenantScopedRepository` con SQLite in-memory propio (no usan la DB de test); quedan fuera del alcance. `next@14.2.16` vulnerable (todo #8, decidir bump). CI `docker-build` no migra: no habría detectado estos bugs — considerar paso de migración en CI.

@@ -9,19 +9,13 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.models.base import Base
 
 logger = get_logger(__name__)
 settings = get_settings()
-
-
-class Base(DeclarativeBase):
-    """Base declarativa para todos los modelos."""
-
-    pass
 
 
 # Engine singleton

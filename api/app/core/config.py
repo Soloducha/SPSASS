@@ -1,9 +1,18 @@
 """Configuración de la aplicación usando Pydantic Settings v2."""
 
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic.types import StringConstraints
+from typing_extensions import Annotated as TypedAnnotated
+
+# Type que acepta tanto PostgreSQL como SQLite (para tests)
+DatabaseDsn = Annotated[
+    str,
+    StringConstraints(pattern=r"^(postgresql(\+\w+)?|sqlite(\+\w+)?)://"),
+]
 
 
 class Settings(BaseSettings):
@@ -27,9 +36,9 @@ class Settings(BaseSettings):
     # ──────────────────────────────────────────────
     # Base de datos
     # ──────────────────────────────────────────────
-    DATABASE_URL: PostgresDsn = Field(
+    DATABASE_URL: DatabaseDsn = Field(
         default="postgresql+asyncpg://spsaas:spsaas@localhost:5432/spsaas",
-        description="URL de conexión a PostgreSQL + TimescaleDB (asyncpg)",
+        description="URL de conexión a PostgreSQL + TimescaleDB (asyncpg) o SQLite (tests)",
     )
 
     # ──────────────────────────────────────────────

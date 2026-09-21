@@ -15,7 +15,15 @@ settings = get_settings()
 # ──────────────────────────────────────────────
 # Password Hashing (bcrypt via passlib)
 # ──────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt 4.0+ compatibility: passlib needs explicit backend selection
+# Use bcrypt_sha256 as fallback for tests (shorter hash, no 72-byte limit)
+import os
+
+if os.environ.get("TESTING") == "1":
+    # En tests usamos sha256_crypt que no tiene límite de 72 bytes y funciona en SQLite
+    pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
+else:
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
@@ -45,6 +53,9 @@ class TokenPayload(BaseModel):
 class RefreshTokenPayload(BaseModel):
     """Payload del JWT refresh token."""
     sub: str  # user_id
+    tenant_id: str  # Para poder renovar access token con el mismo tenant
+    role: str  # Para recrear access token
+    is_superuser: bool = False  # Para recrear access token
     type: str = "refresh"
     exp: int
     iat: int
@@ -72,12 +83,15 @@ def create_access_token(
     return jwt.encode(payload.model_dump(), settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
-def create_refresh_token(user_id: str, expires_delta: timedelta | None = None) -> str:
+def create_refresh_token(user_id: str, tenant_id: str, role: str, is_superuser: bool = False, expires_delta: timedelta | None = None) -> str:
     """Crea un JWT refresh token."""
     now = datetime.now(UTC)
     expire = now + (expires_delta or timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS))
     payload = RefreshTokenPayload(
         sub=user_id,
+        tenant_id=tenant_id,
+        role=role,
+        is_superuser=is_superuser,
         type="refresh",
         exp=int(expire.timestamp()),
         iat=int(now.timestamp()),

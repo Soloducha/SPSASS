@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -29,14 +30,21 @@ def get_engine() -> AsyncEngine:
     """Obtiene o crea el engine async de SQLAlchemy."""
     global _engine
     if _engine is None:
-        _engine = create_async_engine(
-            str(settings.DATABASE_URL),
-            echo=settings.ENVIRONMENT == "development",
-            pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
-        )
-        logger.info("database_engine_created", url=str(settings.DATABASE_URL).split("@")[-1])
+        db_url = str(settings.DATABASE_URL)
+        # SQLite no soporta pool_size/max_overflow, usar StaticPool
+        is_sqlite = db_url.startswith("sqlite")
+        engine_kwargs = {
+            "echo": settings.ENVIRONMENT == "development",
+        }
+        if is_sqlite:
+            engine_kwargs["poolclass"] = StaticPool
+        else:
+            engine_kwargs["pool_pre_ping"] = True
+            engine_kwargs["pool_size"] = 10
+            engine_kwargs["max_overflow"] = 20
+
+        _engine = create_async_engine(db_url, **engine_kwargs)
+        logger.info("database_engine_created", url=db_url.split("@")[-1] if "@" in db_url else db_url)
     return _engine
 
 

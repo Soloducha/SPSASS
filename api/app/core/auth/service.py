@@ -12,6 +12,7 @@ from app.core.auth.security import (
     decode_token,
     generate_api_key,
     hash_api_key,
+    hash_password,
     verify_password,
 )
 from app.core.auth.schemas import (
@@ -143,7 +144,12 @@ async def register_user(
         role=user.role.value,
         is_superuser=user.is_superuser,
     )
-    refresh_token = create_refresh_token(user_id=str(user.id))
+    refresh_token = create_refresh_token(
+        user_id=str(user.id),
+        tenant_id=str(tenant.id),
+        role=user.role.value,
+        is_superuser=user.is_superuser,
+    )
 
     logger.info("user_registered", user_id=str(user.id), tenant_id=str(tenant.id), email=data.email)
 
@@ -179,7 +185,12 @@ async def login_user(session: AsyncSession, data: LoginRequest) -> TokenResponse
         role=user.role.value,
         is_superuser=user.is_superuser,
     )
-    refresh_token = create_refresh_token(user_id=str(user.id))
+    refresh_token = create_refresh_token(
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        role=user.role.value,
+        is_superuser=user.is_superuser,
+    )
 
     logger.info("user_logged_in", user_id=str(user.id), tenant_id=str(user.tenant_id))
 

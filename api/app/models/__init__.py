@@ -3,6 +3,7 @@ from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
 from app.models.tenant import Tenant, PlanType
 from app.models.user import User, UserRole
 from app.models.tenant_member import TenantMember, MemberRole
+from app.models.api_key import ApiKey
 from app.models.server import Server, ServerStatus
 from app.models.metric import Metric, MetricType
 from app.models.service import Service, ServiceState
@@ -34,6 +35,8 @@ __all__ = [
     # TenantMember
     "TenantMember",
     "MemberRole",
+    # ApiKey
+    "ApiKey",
     # Server
     "Server",
     "ServerStatus",

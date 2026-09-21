@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.api import auth_router
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
 from app.db.session import close_db, get_engine, init_db
@@ -144,6 +145,12 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         status_code=500,
         content={"detail": "Internal server error"},
     )
+
+
+# ──────────────────────────────────────────────
+# Routers
+# ──────────────────────────────────────────────
+app.include_router(auth_router)
 
 
 if __name__ == "__main__":

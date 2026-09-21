@@ -58,7 +58,7 @@ Actualizar dependencias de bajo riesgo en todo el monorepo (web/api/agent), veri
 - 2026-09-21: T2 api completado — 13 deps actualizadas, ruff 0.16.8, pytest 28 passed / 3 xfailed, docker build OK
 - 2026-09-21: T3 agent completado — go 1.27.1, go build ./... OK (warning: no packages, esperado)
 - 2026-09-21: T4 verificación final — git status limpio (4 archivos modificados + task doc), next build OK, pytest baseline OK
-- 2026-09-21: T5 web completado — tailwind 3.4.15 → 4.3.3, @tailwindcss/postcss 4.3.3, autoprefixer removed, globals.css @import "tailwindcss", tailwind.config.ts deleted (commit: dba28ca), lint OK (0 warnings), build OK (Turbopack, TypeScript clean)
+- 2026-09-21: T5 web completado — tailwind 3.4.15 → 4.3.3, @tailwindcss/postcss 4.3.3, autoprefixer removed, globals.css @import "tailwindcss", tailwind.config.ts deleted (commit: 34f5029 — verificado con git log real; la doc del writer citaba dba28ca por error), lint OK (0 warnings), build OK (Turbopack, TypeScript clean)
 
 ## Checks
 

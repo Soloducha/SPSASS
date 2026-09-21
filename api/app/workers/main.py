@@ -25,7 +25,7 @@ async def on_shutdown(ctx: dict) -> None:
 class WorkerSettings:
     """Configuración de workers arq."""
 
-    redis_settings = RedisSettings.from_url(str(settings.REDIS_URL))
+    redis_settings = RedisSettings.from_dsn(str(settings.REDIS_URL))
     # Jobs se registrarán en T4+
     functions = []
     cron_jobs = []

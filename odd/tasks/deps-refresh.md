@@ -1,4 +1,4 @@
-# Feature: Deps refresh round 1 — low risk updates
+# Feature: Deps refresh — rondas por riesgo
 
 - **Estado**: en progreso
 - **Rama**: `feature/deps-refresh` (basada en feature/next16-web, sin main aún)
@@ -43,6 +43,14 @@ Actualizar dependencias de bajo riesgo en todo el monorepo (web/api/agent), veri
 - [x] T3: Agent — go 1.23 → 1.27.1 en agent/go.mod (commit: ee156a7)
 - [x] T4: Verificación: web build+lint, api pytest (28 passed / 3 xfailed contra Postgres), agent build (verificado)
 
+## Ronda 2 — riesgo mayor
+
+- [x] T5: Web — migrar Tailwind 3.4.15 → 4.3.3 (con @tailwindcss/postcss, postcss.config, globals.css; quitar autoprefixer; regenerar lockfile)
+- [ ] T6: API — pytest 8.3 → 9.x + pytest-asyncio 0.23 → 1.x + pytest-cov 5 → 7.x + mypy 1.11 → 2.x
+- [ ] T7: API — fastapi 0.115 → 0.141 + httpx 0.27 → 0.28 (breaking: revisar aliases/URL)
+- [ ] T8: API — redis-py 5.0 → 8.1 (revisar breaking changes de arq/worker)
+- [ ] FUERA DE ALCANCE: typescript 7.x (rewrite en Go, no tocar)
+
 ## Progreso
 
 - 2026-09-21: auditoría de versiones (npm view / PyPI / go.dev) → clasificación por riesgo; rama `feature/deps-refresh` creada.
@@ -50,6 +58,7 @@ Actualizar dependencias de bajo riesgo en todo el monorepo (web/api/agent), veri
 - 2026-09-21: T2 api completado — 13 deps actualizadas, ruff 0.16.8, pytest 28 passed / 3 xfailed, docker build OK
 - 2026-09-21: T3 agent completado — go 1.27.1, go build ./... OK (warning: no packages, esperado)
 - 2026-09-21: T4 verificación final — git status limpio (4 archivos modificados + task doc), next build OK, pytest baseline OK
+- 2026-09-21: T5 web completado — tailwind 3.4.15 → 4.3.3, @tailwindcss/postcss 4.3.3, autoprefixer removed, globals.css @import "tailwindcss", tailwind.config.ts deleted (commit: dba28ca), lint OK (0 warnings), build OK (Turbopack, TypeScript clean)
 
 ## Checks
 

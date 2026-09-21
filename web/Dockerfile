@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for Next.js 14
 # Usage:
 #   Development (hot reload): docker compose up web
-#   Production build:        docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build web
+#   Production build:        docker build --target runner -t spsaas-web ./web
 
 # ──────────────────────────────────────────────
 # Stage 1: Base — shared dependencies
@@ -10,13 +10,14 @@ FROM node:20-alpine AS base
 WORKDIR /app
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # ──────────────────────────────────────────────
 # Stage 2: Dependencies — install all deps
 # ──────────────────────────────────────────────
 FROM base AS deps
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # ──────────────────────────────────────────────
@@ -26,7 +27,6 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm run build
 
 # ──────────────────────────────────────────────
@@ -53,3 +53,13 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
+
+# ──────────────────────────────────────────────
+# Stage 5: Dev — development image (DEFAULT target)
+# ──────────────────────────────────────────────
+FROM base AS dev
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+EXPOSE 3000
+CMD ["pnpm", "dev", "-H", "0.0.0.0"]

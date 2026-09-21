@@ -82,3 +82,7 @@ secrets/
 # Misc
 *.tgz
 .cache/
+
+# Local tooling state
+.atl/
+.codegraph/

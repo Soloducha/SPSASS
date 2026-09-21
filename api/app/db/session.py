@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.tenant.context import get_tenant_context
 from app.models.base import Base
 
 logger = get_logger(__name__)
@@ -58,6 +60,30 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     Uso:
         async with get_db_session() as session:
             ...
+    Inyecta automáticamente app.tenant_id en PostgreSQL si hay contexto de tenant.
+    """
+    session = get_session_factory()()
+    try:
+        # Inyectar tenant_id en sesión PostgreSQL para RLS
+        tenant_ctx = get_tenant_context()
+        if tenant_ctx:
+            await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_ctx.tenant_id)})
+            logger.debug("db_session_tenant_injected", tenant_id=str(tenant_ctx.tenant_id))
+
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
+
+
+@asynccontextmanager
+async def get_db_session_without_tenant() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Sesión de BD SIN inyección de tenant (para operaciones admin, migraciones, etc.).
+    Úsala con precaución: bypassa RLS completamente.
     """
     session = get_session_factory()()
     try:

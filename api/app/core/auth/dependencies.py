@@ -39,12 +39,14 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 # JWT Auth Dependencies
 # ──────────────────────────────────────────────
 async def get_current_user(
+    request: Request,
     session: SessionDep,
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> User:
     """
     Dependencia que obtiene el usuario actual desde JWT Bearer token.
     Header: Authorization: Bearer <access_token>
+    Setea request.state.tenant_id para el middleware de tenant.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -63,6 +65,9 @@ async def get_current_user(
             detail=str(e),
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
+
+    # Setea tenant_id en request state para middleware
+    request.state.tenant_id = user.tenant_id
 
     return user
 
@@ -154,6 +159,7 @@ CurrentTenant = Annotated[Tenant, Depends(get_current_tenant)]
 # API Key Dependencies (para agentes)
 # ──────────────────────────────────────────────
 async def get_tenant_from_api_key(
+    request: Request,
     session: SessionDep,
     x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
 ) -> tuple[Tenant, str]:
@@ -161,6 +167,7 @@ async def get_tenant_from_api_key(
     Dependencia para autenticar agentes via API Key.
     Header: X-Api-Key: spsk_<token>
     Retorna (tenant, api_key_name)
+    Setea request.state.tenant_id para el middleware de tenant.
     """
     if not x_api_key:
         raise HTTPException(
@@ -177,6 +184,9 @@ async def get_tenant_from_api_key(
             detail=str(e),
             headers={"WWW-Authenticate": "ApiKey"},
         ) from e
+
+    # Setea tenant_id en request state para middleware
+    request.state.tenant_id = tenant.id
 
     return tenant, api_key.name
 

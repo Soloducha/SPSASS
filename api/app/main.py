@@ -13,6 +13,7 @@ from sqlalchemy import text
 from app.api import auth_router
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
+from app.core.tenant.middleware import TenantMiddleware
 from app.db.session import close_db, get_engine, init_db
 
 # Configurar logging al importar
@@ -55,6 +56,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Tenant Middleware (debe ir después de CORS, antes de logging para tener contexto)
+app.add_middleware(TenantMiddleware)
 
 
 # ──────────────────────────────────────────────

@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for Next.js 14
+# Multi-stage Dockerfile for Next.js 16
 # Usage:
 #   Development (hot reload): docker compose up web
 #   Production build:        docker build --target runner -t spsaas-web ./web

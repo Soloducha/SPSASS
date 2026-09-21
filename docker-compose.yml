@@ -122,7 +122,7 @@ services:
       - ./api:/app
 
   # ──────────────────────────────────────────────
-  # Web — Next.js 14 (placeholder)
+  # Web — Next.js 16 (placeholder)
   # ──────────────────────────────────────────────
   web:
     build:

@@ -1,0 +1,159 @@
+version: '3.8'
+
+services:
+  # ──────────────────────────────────────────────
+  # Base de datos: PostgreSQL 16 + TimescaleDB
+  # ──────────────────────────────────────────────
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: spsaas-db
+    environment:
+      POSTGRES_DB: spsaas
+      POSTGRES_USER: spsaas
+      POSTGRES_PASSWORD: spsaas
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./api/alembic:/alembic:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spsaas -d spsaas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - spsaas-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ──────────────────────────────────────────────
+  # Redis 7 — Broker + Cache
+  # ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: spsaas-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - spsaas-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ──────────────────────────────────────────────
+  # API — FastAPI async
+  # ──────────────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: spsaas-api
+    environment:
+      DATABASE_URL: postgresql+asyncpg://spsaas:spsaas@db:5432/spsaas
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-32-chars-min}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      API_KEY_PREFIX: spsk_
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - spsaas-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    # Volumen para desarrollo con hot reload
+    volumes:
+      - ./api:/app
+
+  # ──────────────────────────────────────────────
+  # Worker — arq sobre Redis
+  # ──────────────────────────────────────────────
+  worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.worker
+    container_name: spsaas-worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://spsaas:spsaas@db:5432/spsaas
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-32-chars-min}
+      JWT_ALGORITHM: HS256
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - spsaas-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    volumes:
+      - ./api:/app
+
+  # ──────────────────────────────────────────────
+  # Web — Next.js 14 (placeholder)
+  # ──────────────────────────────────────────────
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: spsaas-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - spsaas-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+
+networks:
+  spsaas-network:
+    driver: bridge
+
+volumes:
+  db_data:
+  redis_data:

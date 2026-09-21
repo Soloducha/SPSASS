@@ -5,8 +5,9 @@
 
 # ──────────────────────────────────────────────
 # Stage 1: Base — shared dependencies
+# Node 24 (Krypton) — Active LTS until 2028-04-30 (Node 20 reached EOL 2026-04-30)
 # ──────────────────────────────────────────────
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -32,7 +33,7 @@ RUN pnpm run build
 # ──────────────────────────────────────────────
 # Stage 4: Runner — minimal production image
 # ──────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

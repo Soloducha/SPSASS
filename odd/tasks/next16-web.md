@@ -20,7 +20,7 @@ Migrar `web/` de Next 14.2.16 (placeholder vulnerable) a **Next 16.3.5 + React 1
 - `web/pnpm-lock.yaml`: regenerar (frozen-lockfile en Dockerfile)
 - Nuevo `web/eslint.config.mjs` (flat config, porque Next 16 elimina `next lint`)
 - `web/package.json` script `lint`: `next lint` → `eslint .`
-- `web/Dockerfile`: comentario de encabezado Next.js 14 → 16 (no requiere cambios de runtime: node:20-alpine ≥20.9 ok; `output: 'standalone'` sigue soportado)
+- `web/Dockerfile`: base + runner a `node:24-alpine` (Node 20 llegó a EOL 2026-04-30; Node 24 Krypton Active LTS hasta 2028-04-30, cumple `next >=20.9`)
 - `docker-compose.yml`: comentario del servicio web
 
 ## Fuera de alcance
@@ -36,10 +36,12 @@ Migrar `web/` de Next 14.2.16 (placeholder vulnerable) a **Next 16.3.5 + React 1
 - [x] T3: Regenerar `pnpm-lock.yaml` y verificar `pnpm install --frozen-lockfile`
 - [x] T4: Actualizar comentarios Dockerfile + docker-compose.yml
 - [x] T5: Verificación: `pnpm lint`, `pnpm build`, `docker compose build web`
+- [x] T6: Subir runtime a `node:24-alpine` (Node 20 EOL desde 2026-04-30)
 
 ## Progreso
 
 - 2026-09-21: investigación (Snyk, NCSC, advisories Next.js, registry npm) → decisión Next 16; rama `feature/next16-web` creada.
+- 2026-09-21: writer completó T1–T5 (commits a6c5849, a20945a, 34ddd22, f79a774). Build+lint validados en container node:24-alpine: v24.21.0, Next 16.3.5 Turbopack, standalone OK; eslint 0 errores / 1 warning (postcss.config.mjs anónimo). `docker compose build web` en Windows tiene issue ambiental de bind mount de node_modules — no es defecto del código; build standalone en container es la prueba correcta.
 
 ## Checks
 

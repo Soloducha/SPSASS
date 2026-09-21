@@ -62,6 +62,7 @@ Actualizar dependencias de bajo riesgo en todo el monorepo (web/api/agent), veri
 - 2026-09-21: T6 api completado — pytest 9.1.1, pytest-asyncio 1.4.0, pytest-cov 7.1.0, mypy 2.3.1 (commit: 7e9e9a9); pytest 28 passed / 3 xfailed, ruff pre-existing issues unchanged, mypy 67 pre-existing type errors (best-effort)
 - 2026-09-21: T7 api completado — fastapi 0.115 → 0.141.1, httpx 0.27 → 0.28.1 (commit: 646ed57); pytest 28 passed / 3 xfailed, ruff E/F gate clean, smoke import OK, mypy 42 errors (pre-existing, down from 67)
 - 2026-09-21: T8 api BLOQUEADO — redis-py 5.0.8 → 8.1.0 imposible: arq 0.28.0 (última versión en PyPI) declara `Requires-Dist: redis[hiredis]<6,>=4.2.0`; pip resuelve `ResolutionImpossible`. No hay versión de arq compatible con redis 8.x. Worker boot también tiene bug pre-existente: `RedisSettings.from_url` no existe (debe ser `from_dsn`).
+- 2026-09-21: FIX worker (fuera de T8, aprobado por usuario) — `RedisSettings.from_url` → `from_dsn` en api/app/workers/main.py:28 (commit: ba77c05); worker bootea OK (RedisSettings parsea DSN redis://), pytest 28 passed / 3 xfailed intacto. Bug pre-existente de bootstrap destapado por la verificación de T8.
 
 ## Checks
 

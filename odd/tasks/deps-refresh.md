@@ -46,7 +46,7 @@ Actualizar dependencias de bajo riesgo en todo el monorepo (web/api/agent), veri
 ## Ronda 2 — riesgo mayor
 
 - [x] T5: Web — migrar Tailwind 3.4.15 → 4.3.3 (con @tailwindcss/postcss, postcss.config, globals.css; quitar autoprefixer; regenerar lockfile)
-- [ ] T6: API — pytest 8.3 → 9.x + pytest-asyncio 0.23 → 1.x + pytest-cov 5 → 7.x + mypy 1.11 → 2.x
+- [x] T6: API — pytest 8.3 → 9.x + pytest-asyncio 0.23 → 1.x + pytest-cov 5 → 7.x + mypy 1.11 → 2.x
 - [ ] T7: API — fastapi 0.115 → 0.141 + httpx 0.27 → 0.28 (breaking: revisar aliases/URL)
 - [ ] T8: API — redis-py 5.0 → 8.1 (revisar breaking changes de arq/worker)
 - [ ] FUERA DE ALCANCE: typescript 7.x (rewrite en Go, no tocar)
@@ -59,6 +59,7 @@ Actualizar dependencias de bajo riesgo en todo el monorepo (web/api/agent), veri
 - 2026-09-21: T3 agent completado — go 1.27.1, go build ./... OK (warning: no packages, esperado)
 - 2026-09-21: T4 verificación final — git status limpio (4 archivos modificados + task doc), next build OK, pytest baseline OK
 - 2026-09-21: T5 web completado — tailwind 3.4.15 → 4.3.3, @tailwindcss/postcss 4.3.3, autoprefixer removed, globals.css @import "tailwindcss", tailwind.config.ts deleted (commit: 34f5029 — verificado con git log real; la doc del writer citaba dba28ca por error), lint OK (0 warnings), build OK (Turbopack, TypeScript clean)
+- 2026-09-21: T6 api completado — pytest 9.1.1, pytest-asyncio 1.4.0, pytest-cov 7.1.0, mypy 2.3.1 (commit: 7e9e9a9); pytest 28 passed / 3 xfailed, ruff pre-existing issues unchanged, mypy 67 pre-existing type errors (best-effort)
 
 ## Checks
 

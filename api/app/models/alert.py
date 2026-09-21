@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, String, ForeignKey, Text
+from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
@@ -47,13 +47,23 @@ class AlertRule(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
 
     __tablename__ = "alert_rules"
 
-    entity_type: Mapped[EntityType] = mapped_column(String(50), nullable=False)
+    entity_type: Mapped[EntityType] = mapped_column(
+        SAEnum(EntityType, name="entity_type", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
     entity_id: Mapped[UUID | None] = mapped_column(nullable=True)  # None = aplica a todas
     metric: Mapped[str] = mapped_column(String(100), nullable=False)  # nombre de la métrica
-    operator: Mapped[AlertOperator] = mapped_column(nullable=False)
+    operator: Mapped[AlertOperator] = mapped_column(
+        SAEnum(AlertOperator, name="alert_operator", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
     threshold: Mapped[float] = mapped_column(nullable=False)
     duration_s: Mapped[int] = mapped_column(default=60, nullable=False)  # duración para disparar
-    severity: Mapped[AlertSeverity] = mapped_column(default=AlertSeverity.WARNING, nullable=False)
+    severity: Mapped[AlertSeverity] = mapped_column(
+        SAEnum(AlertSeverity, name="alert_severity", values_callable=lambda e: [m.value for m in e]),
+        default=AlertSeverity.WARNING,
+        nullable=False,
+    )
     channels: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)  # config de canales
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
@@ -77,8 +87,15 @@ class Alert(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     server_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("servers.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    severity: Mapped[AlertSeverity] = mapped_column(nullable=False)
-    status: Mapped[AlertStatus] = mapped_column(default=AlertStatus.OPEN, nullable=False)
+    severity: Mapped[AlertSeverity] = mapped_column(
+        SAEnum(AlertSeverity, name="alert_severity", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
+    status: Mapped[AlertStatus] = mapped_column(
+        SAEnum(AlertStatus, name="alert_status", values_callable=lambda e: [m.value for m in e]),
+        default=AlertStatus.OPEN,
+        nullable=False,
+    )
     message: Mapped[str] = mapped_column(Text, nullable=False)
     triggered_at: Mapped[datetime] = mapped_column(nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(nullable=True)

@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, String
+from sqlalchemy import DateTime, Enum as SAEnum, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
@@ -24,11 +24,15 @@ class User(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
 
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[UserRole] = mapped_column(default=UserRole.MEMBER, nullable=False)
+    role: Mapped[UserRole] = mapped_column(
+        SAEnum(UserRole, name="user_role", values_callable=lambda e: [m.value for m in e]),
+        default=UserRole.MEMBER,
+        nullable=False,
+    )
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(default=False, nullable=False)
-    last_login_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     settings: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     # Relaciones

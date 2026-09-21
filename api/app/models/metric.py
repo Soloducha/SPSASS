@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, String, ForeignKey, Index
+from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantAwareMixin
@@ -35,7 +35,10 @@ class Metric(Base, TenantAwareMixin):
     server_id: Mapped[UUID] = mapped_column(
         ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, primary_key=True
     )
-    type: Mapped[MetricType] = mapped_column(String(50), nullable=False)
+    type: Mapped[MetricType] = mapped_column(
+        SAEnum(MetricType, name="metric_type", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
     value: Mapped[float] = mapped_column(nullable=False)
     tags: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 

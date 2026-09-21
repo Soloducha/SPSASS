@@ -1,7 +1,8 @@
 """Modelo ApiKey para autenticación de agentes."""
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -21,7 +22,7 @@ class ApiKey(Base, UUIDMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     prefix: Mapped[str] = mapped_column(String(20), nullable=False)
-    last_used_at: Mapped[str | None] = mapped_column(nullable=True)  # ISO timestamp string
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # Último uso (timestamp)
 
     # Relaciones
     tenant: Mapped["Tenant"] = relationship(lazy="selectin")

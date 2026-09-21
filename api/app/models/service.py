@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, String, ForeignKey
+from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
@@ -26,9 +26,17 @@ class Service(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
         ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    desired_state: Mapped[ServiceState] = mapped_column(default=ServiceState.RUNNING, nullable=False)
+    desired_state: Mapped[ServiceState] = mapped_column(
+        SAEnum(ServiceState, name="service_state", values_callable=lambda e: [m.value for m in e]),
+        default=ServiceState.RUNNING,
+        nullable=False,
+    )
     auto_restart: Mapped[bool] = mapped_column(default=False, nullable=False)
-    last_status: Mapped[ServiceState] = mapped_column(default=ServiceState.UNKNOWN, nullable=False)
+    last_status: Mapped[ServiceState] = mapped_column(
+        SAEnum(ServiceState, name="service_state", values_callable=lambda e: [m.value for m in e]),
+        default=ServiceState.UNKNOWN,
+        nullable=False,
+    )
     last_checked_at: Mapped[datetime | None] = mapped_column(nullable=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 

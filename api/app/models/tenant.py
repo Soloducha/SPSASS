@@ -2,7 +2,7 @@
 import enum
 from uuid import UUID
 
-from sqlalchemy import JSON, String
+from sqlalchemy import Enum as SAEnum, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -23,7 +23,11 @@ class Tenant(Base, UUIDMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    plan: Mapped[PlanType] = mapped_column(default=PlanType.FREE, nullable=False)
+    plan: Mapped[PlanType] = mapped_column(
+        SAEnum(PlanType, name="plan_type", values_callable=lambda e: [m.value for m in e]),
+        default=PlanType.FREE,
+        nullable=False,
+    )
     settings: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     def __repr__(self) -> str:

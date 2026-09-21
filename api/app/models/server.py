@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, String, ForeignKey
+from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
@@ -26,7 +26,11 @@ class Server(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     ip: Mapped[str | None] = mapped_column(String(45), nullable=True)  # IPv4 o IPv6
     os: Mapped[str | None] = mapped_column(String(100), nullable=True)
     agent_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    status: Mapped[ServerStatus] = mapped_column(default=ServerStatus.UNKNOWN, nullable=False)
+    status: Mapped[ServerStatus] = mapped_column(
+        SAEnum(ServerStatus, name="server_status", values_callable=lambda e: [m.value for m in e]),
+        default=ServerStatus.UNKNOWN,
+        nullable=False,
+    )
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(nullable=True)
     alert_channels: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 

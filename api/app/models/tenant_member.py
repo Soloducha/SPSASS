@@ -2,7 +2,7 @@
 import enum
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import Enum as SAEnum, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
@@ -30,7 +30,11 @@ class TenantMember(Base, UUIDMixin, TimestampMixin):
     tenant_id: Mapped[UUID] = mapped_column(
         ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    role: Mapped[MemberRole] = mapped_column(default=MemberRole.MEMBER, nullable=False)
+    role: Mapped[MemberRole] = mapped_column(
+        SAEnum(MemberRole, name="member_role", values_callable=lambda e: [m.value for m in e]),
+        default=MemberRole.MEMBER,
+        nullable=False,
+    )
 
     # Relaciones
     user: Mapped["User"] = relationship("User", back_populates="tenant_memberships", lazy="selectin")

@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, String, ForeignKey, Text
+from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
@@ -32,13 +32,20 @@ class Job(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
         ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    kind: Mapped[JobKind] = mapped_column(nullable=False)
+    kind: Mapped[JobKind] = mapped_column(
+        SAEnum(JobKind, name="job_kind", values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
     schedule_cron: Mapped[str | None] = mapped_column(String(100), nullable=True)  # solo para cron
     command: Mapped[str] = mapped_column(Text, nullable=False)
     timeout_s: Mapped[int] = mapped_column(default=3600, nullable=False)  # 1 hora default
     alert_on_fail: Mapped[bool] = mapped_column(default=True, nullable=False)
     auto_restart: Mapped[bool] = mapped_column(default=False, nullable=False)
-    status: Mapped[JobStatus] = mapped_column(default=JobStatus.ACTIVE, nullable=False)
+    status: Mapped[JobStatus] = mapped_column(
+        SAEnum(JobStatus, name="job_status", values_callable=lambda e: [m.value for m in e]),
+        default=JobStatus.ACTIVE,
+        nullable=False,
+    )
     config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     # Relaciones

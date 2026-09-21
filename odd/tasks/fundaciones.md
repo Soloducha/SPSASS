@@ -31,7 +31,7 @@ El directorio está vacío (solo `propuesta.md`). Sin repositorio, estructura ni
 | T6 | Multi-tenant: RLS Postgres + middleware de tenant + scoping de queries | ✅ | `bbbccd4` |
 | T7 | Tests básicos: health, auth flow, aislamiento entre tenants | ✅ | `09a6188` |
 | T8 | CI GitHub Actions: lint + test | ✅ | `cd7ffa9` |
-| T9 | Verificación integral contra Postgres real: compose build ✅, migraciones 0001-0004 aplicadas ✅, pytest 28 passed / 3 xfailed ✅ | ✅ | *ver commit* |
+| T9 | Verificación integral contra Postgres real: compose build ✅, migraciones 0001-0004 aplicadas ✅, pytest 28 passed / 3 xfailed ✅ | ✅ | `9dd17ae` ˑ `9f8186c` ˑ `02e0743` ˑ `e81a5b4` ˑ `0998257` ˑ `7c023af` ˑ `323ecb8` |
 
 ## Ruta elegida
 - **Delegada** (writer trigger: 2+ archivos no triviales — bootstrap completo). Un solo writer `general`, con skills de commits por unidad de trabajo.

@@ -22,46 +22,46 @@ def upgrade() -> None:
     # ──────────────────────────────────────────────
     # Enums
     # ──────────────────────────────────────────────
-    plan_type = postgresql.ENUM('free', 'starter', 'growth', 'enterprise', name='plan_type', create_type=True)
+    plan_type = postgresql.ENUM('free', 'starter', 'growth', 'enterprise', name='plan_type', create_type=False)
     plan_type.create(op.get_bind(), checkfirst=True)
 
-    user_role = postgresql.ENUM('owner', 'admin', 'member', 'viewer', name='user_role', create_type=True)
+    user_role = postgresql.ENUM('owner', 'admin', 'member', 'viewer', name='user_role', create_type=False)
     user_role.create(op.get_bind(), checkfirst=True)
 
-    member_role = postgresql.ENUM('owner', 'admin', 'member', 'viewer', name='member_role', create_type=True)
+    member_role = postgresql.ENUM('owner', 'admin', 'member', 'viewer', name='member_role', create_type=False)
     member_role.create(op.get_bind(), checkfirst=True)
 
-    server_status = postgresql.ENUM('online', 'offline', 'degraded', 'unknown', name='server_status', create_type=True)
+    server_status = postgresql.ENUM('online', 'offline', 'degraded', 'unknown', name='server_status', create_type=False)
     server_status.create(op.get_bind(), checkfirst=True)
 
-    metric_type = postgresql.ENUM('cpu_usage', 'mem_usage', 'disk_usage', 'load_avg1', 'load_avg5', 'load_avg15', name='metric_type', create_type=True)
+    metric_type = postgresql.ENUM('cpu_usage', 'mem_usage', 'disk_usage', 'load_avg1', 'load_avg5', 'load_avg15', name='metric_type', create_type=False)
     metric_type.create(op.get_bind(), checkfirst=True)
 
-    service_state = postgresql.ENUM('running', 'stopped', 'failed', 'unknown', name='service_state', create_type=True)
+    service_state = postgresql.ENUM('running', 'stopped', 'failed', 'unknown', name='service_state', create_type=False)
     service_state.create(op.get_bind(), checkfirst=True)
 
-    job_kind = postgresql.ENUM('cron', 'batch', 'scheduled', name='job_kind', create_type=True)
+    job_kind = postgresql.ENUM('cron', 'batch', 'scheduled', name='job_kind', create_type=False)
     job_kind.create(op.get_bind(), checkfirst=True)
 
-    job_status = postgresql.ENUM('active', 'paused', 'disabled', name='job_status', create_type=True)
+    job_status = postgresql.ENUM('active', 'paused', 'disabled', name='job_status', create_type=False)
     job_status.create(op.get_bind(), checkfirst=True)
 
-    alert_severity = postgresql.ENUM('info', 'warning', 'critical', name='alert_severity', create_type=True)
+    alert_severity = postgresql.ENUM('info', 'warning', 'critical', name='alert_severity', create_type=False)
     alert_severity.create(op.get_bind(), checkfirst=True)
 
-    alert_status = postgresql.ENUM('open', 'acknowledged', 'resolved', name='alert_status', create_type=True)
+    alert_status = postgresql.ENUM('open', 'acknowledged', 'resolved', name='alert_status', create_type=False)
     alert_status.create(op.get_bind(), checkfirst=True)
 
-    alert_operator = postgresql.ENUM('gt', 'gte', 'lt', 'lte', 'eq', 'neq', name='alert_operator', create_type=True)
+    alert_operator = postgresql.ENUM('gt', 'gte', 'lt', 'lte', 'eq', 'neq', name='alert_operator', create_type=False)
     alert_operator.create(op.get_bind(), checkfirst=True)
 
-    entity_type = postgresql.ENUM('server', 'service', 'process', 'job', 'metric', name='entity_type', create_type=True)
+    entity_type = postgresql.ENUM('server', 'service', 'process', 'job', 'metric', name='entity_type', create_type=False)
     entity_type.create(op.get_bind(), checkfirst=True)
 
-    report_type = postgresql.ENUM('availability', 'incidents', 'alerts', 'sla', 'metrics', name='report_type', create_type=True)
+    report_type = postgresql.ENUM('availability', 'incidents', 'alerts', 'sla', 'metrics', name='report_type', create_type=False)
     report_type.create(op.get_bind(), checkfirst=True)
 
-    report_status = postgresql.ENUM('pending', 'generating', 'completed', 'failed', name='report_status', create_type=True)
+    report_status = postgresql.ENUM('pending', 'generating', 'completed', 'failed', name='report_status', create_type=False)
     report_status.create(op.get_bind(), checkfirst=True)
 
     # ──────────────────────────────────────────────

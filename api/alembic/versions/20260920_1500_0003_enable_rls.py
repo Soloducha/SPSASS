@@ -23,11 +23,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # Tablas de negocio que llevan tenant_id (excluye 'tenants' que es la tabla raíz)
+# 'metrics' NO está incluida: es una hypertable TimescaleDB con compression/columnstore
+# y TimescaleDB no soporta RLS en hypertables comprimidas (docs.timescale.com + issue #6827).
+# Su aislamiento por tenant se garantiza en la capa de aplicación (TenantScopedRepository).
 BUSINESS_TABLES = [
     'users',
     'tenant_members',
     'servers',
-    'metrics',
     'services',
     'processes',
     'jobs',
@@ -80,8 +82,8 @@ def upgrade() -> None:
         op.execute(f'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY;')
 
         # Política SELECT: solo filas del tenant actual
+        op.execute(f'DROP POLICY IF EXISTS "tenant_isolation_select" ON "{table}";')
         op.execute(f"""
-            DROP POLICY IF EXISTS "tenant_isolation_select" ON "{table}";
             CREATE POLICY "tenant_isolation_select" ON "{table}"
                 FOR SELECT
                 TO app_user
@@ -89,8 +91,8 @@ def upgrade() -> None:
         """)
 
         # Política INSERT: solo insertar con tenant_id = tenant actual
+        op.execute(f'DROP POLICY IF EXISTS "tenant_isolation_insert" ON "{table}";')
         op.execute(f"""
-            DROP POLICY IF EXISTS "tenant_isolation_insert" ON "{table}";
             CREATE POLICY "tenant_isolation_insert" ON "{table}"
                 FOR INSERT
                 TO app_user
@@ -98,8 +100,8 @@ def upgrade() -> None:
         """)
 
         # Política UPDATE: solo actualizar filas del tenant actual
+        op.execute(f'DROP POLICY IF EXISTS "tenant_isolation_update" ON "{table}";')
         op.execute(f"""
-            DROP POLICY IF EXISTS "tenant_isolation_update" ON "{table}";
             CREATE POLICY "tenant_isolation_update" ON "{table}"
                 FOR UPDATE
                 TO app_user
@@ -108,8 +110,8 @@ def upgrade() -> None:
         """)
 
         # Política DELETE: solo borrar filas del tenant actual
+        op.execute(f'DROP POLICY IF EXISTS "tenant_isolation_delete" ON "{table}";')
         op.execute(f"""
-            DROP POLICY IF EXISTS "tenant_isolation_delete" ON "{table}";
             CREATE POLICY "tenant_isolation_delete" ON "{table}"
                 FOR DELETE
                 TO app_user
@@ -127,8 +129,8 @@ def upgrade() -> None:
     op.execute('ALTER TABLE "tenants" ENABLE ROW LEVEL SECURITY;')
     op.execute('ALTER TABLE "tenants" FORCE ROW LEVEL SECURITY;')
 
+    op.execute('DROP POLICY IF EXISTS "tenant_isolation_select" ON "tenants";')
     op.execute("""
-        DROP POLICY IF EXISTS "tenant_isolation_select" ON "tenants";
         CREATE POLICY "tenant_isolation_select" ON "tenants"
             FOR SELECT
             TO app_user

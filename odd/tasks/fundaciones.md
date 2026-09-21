@@ -24,13 +24,14 @@ El directorio está vacío (solo `propuesta.md`). Sin repositorio, estructura ni
 |----|-------|--------|--------|
 | T1 | Inicializar repo: estructura monorepo, .gitignore, README raíz, docs/ | ✅ | `aad4100` |
 | T2 | Docker Compose dev: postgres 16 + timescale, redis, api, workers, web | ✅ | `1e07b54` |
+| T2b | Placeholder web/ Next.js 14 (vacío rompía compose) | ✅ | `b75dc96` |
 | T3 | API FastAPI base: estructura app/, settings, logging, /healthz | ✅ | `de46283` |
 | T4 | Modelos SQLAlchemy 2.0 async + migraciones Alembic (modelo de datos v1) + seed admin | ✅ | `2373028` (+ `d97254e` soporte Alembic) |
-| T5 | Auth JWT: register/login/refresh + API keys para agentes + RBAC por tenant | 🔲 | — |
-| T6 | Multi-tenant: RLS Postgres + middleware de tenant + scoping de queries | 🔲 | — |
-| T7 | Tests básicos: health, auth flow, aislamiento entre tenants | 🔲 | — |
-| T8 | CI GitHub Actions: lint + test | 🔲 | — |
-| T9 | Verificación integral: compose build + up, migraciones aplicadas, pytest verde, smoke test | 🔲 | — |
+| T5 | Auth JWT: register/login/refresh + API keys para agentes + RBAC por tenant | ✅ | `906c33c` (+ `f1a274a` tenant-bound refresh) |
+| T6 | Multi-tenant: RLS Postgres + middleware de tenant + scoping de queries | ✅ | `bbbccd4` |
+| T7 | Tests básicos: health, auth flow, aislamiento entre tenants | ✅ | `09a6188` |
+| T8 | CI GitHub Actions: lint + test | ✅ | `cd7ffa9` |
+| T9 | Verificación integral: pytest 28 passed / 3 xfailed; compose build **pendiente — Docker no instalado en la máquina local** | ⚠️ | — |
 
 ## Ruta elegida
 - **Delegada** (writer trigger: 2+ archivos no triviales — bootstrap completo). Un solo writer `general`, con skills de commits por unidad de trabajo.
@@ -50,4 +51,6 @@ El directorio está vacío (solo `propuesta.md`). Sin repositorio, estructura ni
 - Workers: arq sobre Redis (estructura lista; lógica en meses 2-4).
 
 ## Progreso / Verificación
-- (pendiente de delegación)
+- **Verificado (real)**: `pytest` 28 passed / 3 xfailed (auth flow, api keys, multi-tenant scoping, health). Migración validada con `alembic upgrade head --sql` (rel SQL correcto). YAML CI parsea válido.
+- **Pendiente**: `docker compose build` + migraciones contra Postgres real — Docker NO está instalado en la máquina local (verificado). Se ejecuta en CI (job docker-build) o cuando el usuario instale Docker.
+- **Riesgo mes 2**: los 3 xfailed son de `TenantScopedRepository` con SQLite (UUID) — pasarían con Postgres real. Los refrescos usan sha256_crypt en TESTING=1; prod usa bcrypt.

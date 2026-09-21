@@ -1,11 +1,15 @@
 """Modelo ApiKey para autenticación de agentes."""
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.tenant import Tenant
 
 
 class ApiKey(Base, UUIDMixin, TimestampMixin):

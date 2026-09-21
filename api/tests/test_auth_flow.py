@@ -343,7 +343,7 @@ async def test_full_auth_flow_register_login_me_refresh() -> None:
             },
         )
         assert reg_resp.status_code == 201
-        reg_tokens = reg_resp.json()
+        _ = reg_resp.json()
 
         # 2. Login (también funciona directo tras register, pero testamos login explícito)
         login_resp = await client.post(

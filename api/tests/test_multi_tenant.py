@@ -90,7 +90,6 @@ async def test_api_keys_isolated_per_tenant() -> None:
         )
         assert create_resp.status_code == 201
         api_key_a = create_resp.json()
-        raw_key_a = api_key_a["raw_key"]
         key_id_a = api_key_a["id"]
 
         # Tenant B: registrar admin
@@ -164,7 +163,7 @@ async def test_tenant_scoped_repository_filters_by_tenant() -> None:
     async with session_factory() as session:
         set_tenant_context(tenant_a_id)
         repo_a = ServerRepository(session)
-        servers_a = await repo_a.list()
+        servers_a = await repo_a.list_all()
         assert len(servers_a) == 2
         assert all(s.tenant_id == tenant_a_id for s in servers_a)
         clear_tenant_context()
@@ -173,7 +172,7 @@ async def test_tenant_scoped_repository_filters_by_tenant() -> None:
     async with session_factory() as session:
         set_tenant_context(tenant_b_id)
         repo_b = ServerRepository(session)
-        servers_b = await repo_b.list()
+        servers_b = await repo_b.list_all()
         assert len(servers_b) == 1
         assert all(s.tenant_id == tenant_b_id for s in servers_b)
         clear_tenant_context()
@@ -186,7 +185,7 @@ async def test_tenant_scoped_repository_filters_by_tenant() -> None:
         async with session_factory() as session2:
             set_tenant_context(tenant_b_id)
             repo_b = ServerRepository(session2)
-            servers_b = await repo_b.list()
+            servers_b = await repo_b.list_all()
             server_b_id = servers_b[0].id
             clear_tenant_context()
 
@@ -245,9 +244,8 @@ async def test_tenant_scoped_repository_update_delete_respect_tenant() -> None:
     async with session_factory() as session:
         set_tenant_context(tenant_a_id)
         repo_a = ServerRepository(session)
-        server = await repo_a.create(hostname="a.example.com", status=ServerStatus.ONLINE)
+        await repo_a.create(hostname="a.example.com", status=ServerStatus.ONLINE)
         await session.commit()
-        server_id = server.id
         clear_tenant_context()
 
     # Crear server en tenant B

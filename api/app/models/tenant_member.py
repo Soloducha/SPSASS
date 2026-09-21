@@ -1,14 +1,20 @@
 """Modelo TenantMember (para MSP - usuario en múltiples tenants)."""
 import enum
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Enum as SAEnum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
+if TYPE_CHECKING:
+    from app.models.tenant import Tenant
+    from app.models.user import User
 
-class MemberRole(str, enum.Enum):
+
+class MemberRole(enum.StrEnum):
     """Roles de miembro en tenant."""
     OWNER = "owner"
     ADMIN = "admin"

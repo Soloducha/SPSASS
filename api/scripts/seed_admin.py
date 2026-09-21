@@ -16,25 +16,24 @@ NO dejes credenciales hardcodeadas ni por defecto inseguras.
 
 import os
 import sys
-from uuid import UUID
+from pathlib import Path
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # Asegurar que app está en el path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.auth.security import hash_password
 from app.core.config import get_settings
 from app.db.session import get_db_session, init_db
-from app.models.tenant import Tenant, PlanType
+from app.models.tenant import PlanType, Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.models.user import User, UserRole
-from app.models.tenant_member import TenantMember, MemberRole
 
 
 async def seed_admin() -> None:
     """Crea tenant y admin inicial si no existen."""
-    settings = get_settings()
+    _ = get_settings()
 
     # Validar variables de entorno requeridas
     admin_email = os.getenv("SPSAAS_ADMIN_EMAIL")
@@ -122,7 +121,7 @@ async def seed_admin() -> None:
     print("\n✅ Bootstrap completado exitosamente")
     print(f"   Tenant: {tenant_name} ({tenant_slug})")
     print(f"   Admin:  {admin_email}")
-    print(f"   Superuser: True")
+    print("   Superuser: True")
     print("\nAhora puedes loguearte en /auth/login")
 
 
@@ -131,3 +130,4 @@ if __name__ == "__main__":
 
     asyncio.run(init_db())
     asyncio.run(seed_admin())
+

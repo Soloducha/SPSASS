@@ -1,8 +1,11 @@
 """Entry point para workers arq."""
 
 import asyncio
+from typing import Any
 
 from arq.connections import RedisSettings
+from arq.cron import CronJob
+from arq.worker import Function
 
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
@@ -12,12 +15,12 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 
-async def on_startup(ctx: dict) -> None:
+async def on_startup(ctx: dict[str, Any]) -> None:
     """Inicialización al arrancar worker."""
     logger.info("worker_starting")
 
 
-async def on_shutdown(ctx: dict) -> None:
+async def on_shutdown(ctx: dict[str, Any]) -> None:
     """Limpieza al apagar worker."""
     logger.info("worker_shutting_down")
 
@@ -27,8 +30,8 @@ class WorkerSettings:
 
     redis_settings = RedisSettings.from_dsn(str(settings.REDIS_URL))
     # Jobs se registrarán en T4+
-    functions = []
-    cron_jobs = []
+    functions: list[Function] = []
+    cron_jobs: list[CronJob] = []
     on_startup = on_startup
     on_shutdown = on_shutdown
 

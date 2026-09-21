@@ -1,22 +1,27 @@
 """Modelos Job y JobRun."""
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey, Text
+from sqlalchemy import JSON, ForeignKey, String, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
+from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.server import Server
 
 
-class JobKind(str, enum.Enum):
+class JobKind(enum.StrEnum):
     """Tipos de job."""
     CRON = "cron"
     BATCH = "batch"
     SCHEDULED = "scheduled"
 
 
-class JobStatus(str, enum.Enum):
+class JobStatus(enum.StrEnum):
     """Estado del job."""
     ACTIVE = "active"
     PAUSED = "paused"

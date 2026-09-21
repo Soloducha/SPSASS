@@ -6,28 +6,28 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth.schemas import (
+    ApiKeyCreateRequest,
+    ApiKeyListResponse,
+    ApiKeyResponse,
+    LoginRequest,
+    RegisterRequest,
+    TokenResponse,
+)
 from app.core.auth.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
     generate_api_key,
-    hash_api_key,
     hash_password,
     verify_password,
 )
-from app.core.auth.schemas import (
-    ApiKeyCreateRequest,
-    ApiKeyResponse,
-    ApiKeyListResponse,
-    LoginRequest,
-    RegisterRequest,
-    TokenResponse,
-    UserResponse,
-)
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.db.session import get_db_session
 from app.models.api_key import ApiKey
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.models.user import User, UserRole
 
 logger = get_logger(__name__)
@@ -129,8 +129,6 @@ async def register_user(
     await session.flush()
 
     # Crear tenant_members entry
-    from app.models.tenant_member import TenantMember, MemberRole
-
     member = TenantMember(user_id=user.id, tenant_id=tenant.id, role=MemberRole.OWNER)
     session.add(member)
     await session.commit()
@@ -205,14 +203,13 @@ async def refresh_access_token(refresh_token: str) -> TokenResponse:
     """Genera nuevo access token desde refresh token."""
     try:
         payload = decode_token(refresh_token)
-        if payload.type != "refresh":
-            raise InvalidTokenError("Token no es un refresh token")
     except Exception as e:
         raise InvalidTokenError(f"Refresh token inválido: {e}") from e
 
-    # Verificar que el usuario existe y está activo
-    from app.db.session import get_db_session
+    if payload.type != "refresh":
+        raise InvalidTokenError("Token no es un refresh token")
 
+    # Verificar que el usuario existe y está activo
     async with get_db_session() as session:
         result = await session.execute(
             select(User).where(User.id == UUID(payload.sub))
@@ -240,10 +237,11 @@ async def get_current_user(session: AsyncSession, token: str) -> User:
     """Obtiene usuario actual desde access token."""
     try:
         payload = decode_token(token)
-        if payload.type != "access":
-            raise InvalidTokenError("Token no es un access token")
     except Exception as e:
         raise InvalidTokenError(f"Token inválido: {e}") from e
+
+    if payload.type != "access":
+        raise InvalidTokenError("Token no es un access token")
 
     result = await session.execute(
         select(User).where(User.id == UUID(payload.sub))

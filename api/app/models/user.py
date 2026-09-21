@@ -1,15 +1,19 @@
 """Modelo User."""
 import enum
 from datetime import datetime
-from uuid import UUID
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SAEnum, JSON, String
+from sqlalchemy import JSON, DateTime, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
+from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.tenant_member import TenantMember
 
 
-class UserRole(str, enum.Enum):
+class UserRole(enum.StrEnum):
     """Roles de usuario dentro de un tenant."""
     OWNER = "owner"
     ADMIN = "admin"

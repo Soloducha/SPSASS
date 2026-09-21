@@ -4,6 +4,7 @@ Inyecta el tenant_id en:
 1. ContextVar (para query scoping en repositorios)
 2. PostgreSQL session variable `app.tenant_id` (para RLS)
 """
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from fastapi import Request, Response
@@ -13,6 +14,8 @@ from app.core.logging import get_logger
 from app.core.tenant.context import clear_tenant_context, set_tenant_context
 
 logger = get_logger(__name__)
+
+RequestResponseEndpoint = Callable[[Request], Awaitable[Response]]
 
 
 class TenantMiddleware(BaseHTTPMiddleware):
@@ -30,7 +33,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
     a ContextVar + PostgreSQL.
     """
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Intentar obtener tenant_id del request state (seteado por auth deps)
         tenant_id: UUID | None = getattr(request.state, "tenant_id", None)
 
@@ -51,8 +54,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
             logger.debug("tenant_middleware_injected", tenant_id=str(tenant_id))
 
         try:
-            response = await call_next(request)
-            return response
+            return await call_next(request)
         finally:
             # Limpiar contexto al final del request
             clear_tenant_context()

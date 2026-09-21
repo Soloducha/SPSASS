@@ -1,15 +1,21 @@
 """Modelo Server."""
 import enum
 from datetime import datetime
-from uuid import UUID
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey
+from sqlalchemy import JSON, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
+from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.job import Job
+    from app.models.process import Process
+    from app.models.service import Service
 
 
-class ServerStatus(str, enum.Enum):
+class ServerStatus(enum.StrEnum):
     """Estado del servidor."""
     ONLINE = "online"
     OFFLINE = "offline"

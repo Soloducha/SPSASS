@@ -1,6 +1,9 @@
 """Tests para API Keys: crear, listar, revocar, autenticar agente."""
 
 import pytest
+from app.core.auth.service import InvalidTokenError, verify_api_key_from_header
+from app.core.config import get_settings
+from app.db.session import get_db_session
 from app.main import app
 from httpx import ASGITransport, AsyncClient
 
@@ -253,7 +256,6 @@ async def test_api_key_auth_valid_key_works() -> None:
 @pytest.mark.asyncio
 async def test_api_key_prefix_matches_settings() -> None:
     """El prefix de la API key coincide con API_KEY_PREFIX de settings."""
-    from app.core.config import get_settings
     settings = get_settings()
 
     transport = ASGITransport(app=app)
@@ -337,10 +339,6 @@ async def test_api_key_without_auth_returns_401() -> None:
 @pytest.mark.asyncio
 async def test_api_key_invalid_format_returns_401() -> None:
     """Verificación de API key con formato inválido (test del servicio verify_api_key_from_header)."""
-
-    from app.core.auth.service import InvalidTokenError, verify_api_key_from_header
-    from app.db.session import get_db_session
-
     # Test unitario directo del servicio
     async with get_db_session() as session:
         # Intentar verificar key con formato incorrecto

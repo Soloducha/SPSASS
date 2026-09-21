@@ -2,12 +2,13 @@
 
 import os
 
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-os.environ["REDIS_URL"] = "redis://localhost:6379/0"  # healthz lo chequea, tolera fallo
-os.environ["TESTING"] = "1"  # Activa hash sha256_crypt en tests
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("TESTING", "1")  # Activa hash sha256_crypt en tests
 
 import pytest_asyncio
-from app.db.session import close_db, get_db_session, init_db
+import sqlalchemy as sa
+from app.db.session import close_db, get_db_session, get_engine, init_db
 from app.main import app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,13 +29,42 @@ async def db_session() -> AsyncSession:
         yield session
 
 
-@pytest_asyncio.fixture(autouse=True, scope="session")
+@pytest_asyncio.fixture(autouse=True, scope="function")
 async def initialize_database() -> None:
-    """Inicializa BD al inicio de la sesión de tests."""
+    """Recrea el engine en el event loop de cada test (pytest-asyncio crea un
+    loop por test; asyncpg no permite reutilizar conexiones entre loops).
+    Con SQLite StaticPool no se notaba; con Postgres real es obligatorio.
+    Además, en Postgres real limpia las tablas de negocio antes de cada test
+    para aislamiento (SQLite en memoria ya lo hace por defecto)."""
     global _engine, _session_factory
-    # Resetear singletons para que usen la nueva DATABASE_URL
+    # Resetear singletons para que usen la nueva DATABASE_URL y el loop actual
     _engine = None
     _session_factory = None
     await init_db()
+
+    # Limpieza condicional para Postgres real (no SQLite)
+    engine = get_engine()
+    if engine.dialect.name != "sqlite":
+        # Orden de dependencias: hijos primero, padres después
+        tables = [
+            "alert_deliveries",
+            "alerts",
+            "alert_rules",
+            "job_runs",
+            "jobs",
+            "reports",
+            "metrics",
+            "services",
+            "processes",
+            "servers",
+            "api_keys",
+            "tenant_members",
+            "users",
+            "tenants",
+        ]
+        async with engine.begin() as conn:
+            for table in tables:
+                await conn.execute(sa.text(f'TRUNCATE "{table}" RESTART IDENTITY CASCADE'))
+
     yield
     await close_db()

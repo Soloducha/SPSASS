@@ -113,7 +113,7 @@ async def healthz() -> JSONResponse:
     try:
         redis_client = redis.from_url(str(settings.REDIS_URL))
         await redis_client.ping()
-        await redis_client.close()
+        await redis_client.aclose()
         checks["redis"] = "ok"
     except Exception:
         logger.exception("healthz_redis_failed")

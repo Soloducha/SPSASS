@@ -18,7 +18,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 # Stage 2: Dependencies — install all deps
 # ──────────────────────────────────────────────
 FROM base AS deps
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # ──────────────────────────────────────────────
@@ -59,7 +59,7 @@ CMD ["node", "server.js"]
 # Stage 5: Dev — development image (DEFAULT target)
 # ──────────────────────────────────────────────
 FROM base AS dev
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 EXPOSE 3000

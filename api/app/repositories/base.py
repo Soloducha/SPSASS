@@ -2,7 +2,13 @@
 
 Este repositorio fuerza filtro por tenant_id en TODAS las queries.
 La RLS en PostgreSQL es la red de seguridad; esto es la primera línea.
+
+Nota: `from __future__ import annotations` es necesario porque el método `list`
+sombrea al builtin `list` en el namespace de la clase; sin anotaciones diferidas,
+`list[dict]` intentaría subscriptar al método y fallaría en runtime.
 """
+from __future__ import annotations
+
 from collections.abc import Sequence
 from uuid import UUID
 

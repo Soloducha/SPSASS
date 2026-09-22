@@ -38,11 +38,11 @@ No existe telemetría todavía. El mes 1 dejó auth + multi-tenant + models (`Se
 
 ## Checklist (tasks)
 
-- [ ] **T1 — Fix tenant context dependency-based** — `dependencies.py` (`get_current_user`, `get_tenant_from_api_key`) → llamar `set_tenant_context()` tras resolver el tenant. Test que verifique que un endpoint HTTP con API key puede usar `TenantScopedRepository` sin `RuntimeError`.
-- [ ] **T2 — Registro de servidor** — `POST /api/v1/servers/register` con `ApiKeyAuth`: schema `ServerRegisterRequest(hostname, ip?, os?, agent_version?)`, service upsert por `(tenant_id, hostname)`, response con `id`. Tests HTTP.
-- [ ] **T3 — Heartbeat** — `POST /api/v1/servers/{id}/heartbeat` con `ApiKeyAuth`: actualiza `last_heartbeat_at` (now UTC) y `status=ONLINE` solo si el server pertenece al tenant (404 si no). Tests HTTP.
-- [ ] **T4 — Ingesta de métricas** — `POST /api/v1/ingest/metrics` con `ApiKeyAuth`: payload `{server_id, ts?, metrics: [{type, value, tags?}]}`, valida `server_id` del tenant, bulk insert en `Metric` con `tenant_id` forzado, batch cap (MAX 1000), devuelve `{received, inserted}`. Tests HTTP (payload inválido, server de otro tenant → 404).
-- [ ] **T5 — Ruteo y model wiring** — crear `api/app/api/v1/` con routers `servers.py` e `ingest.py`, registrarlos en `main.py`, verificar OpenAPI.
+- [x] **T1 — Fix tenant context dependency-based** — `set_tenant_context()` en `get_current_user` y `get_tenant_from_api_key`; `SET LOCAL` solo en PostgreSQL (SQLite-safe). Verificado por tests HTTP + verifier independiente. Commit `3e41660`.
+- [x] **T2 — Registro de servidor** — `POST /api/v1/servers/register` con upsert `(tenant_id, hostname)` (201 nuevo / 200 update mismo id). Tests HTTP. Commit `3e41660`.
+- [x] **T3 — Heartbeat** — `POST /api/v1/servers/{id}/heartbeat` tenant-scoped (404 cross-tenant). Tests HTTP. Commit `3e41660`.
+- [x] **T4 — Ingesta de métricas** — `POST /api/v1/ingest/metrics`, batch cap 1000, PK compuesta con microsecond offsets, `{received, inserted}`. Tests HTTP + persistencia verificada. Commit `3e41660`.
+- [x] **T5 — Ruteo y model wiring** — `api/app/api/v1/` con `servers.py`, `ingest.py`, registrados en `main.py`. Commit `3e41660`.
 - [ ] **T6 — Agente Go: estructura + collector** — `cmd/agent/main.go`, `internal/collector` con gopsutil v3: CPU %, mem, disco, load avg cada 30s; struct `MetricsBatch` que matchea el payload de la API.
 - [ ] **T7 — Agente Go: sender** — `internal/sender`: registro (`/servers/register`), heartbeat periódico (`/servers/{id}/heartbeat`), push HTTPS (`/ingest/metrics`) con header `X-Api-Key`, retry/backoff, timeouts.
 - [ ] **T8 — Agente Go: config + main** — configuración por env/flags (API URL, API key, intervalo, server id), logging, shutdown graceful, binario estático (`CGO_ENABLED=0 go build -ldflags="-s -w"`).
@@ -64,7 +64,8 @@ No existe telemetría todavía. El mes 1 dejó auth + multi-tenant + models (`Se
 ## Progreso y evidencia
 
 - **2026-09-22**: Feature iniciado. Mapeo de la API completado (general subagent): confirmado que `ApiKeyAuth` y flujo API key → tenant existen; encontrado y verificado bug de tenant context en middleware (ver Decisiones). Branch `feature/mes2-agent-ingesta` creada desde `main@cd422c1`.
-- (pendiente por task)
+- **2026-09-22**: T1-T5 completados (delegado writer + verifier independiente). Commit `3e41660` (11 files, +578/−4). Checks: mypy 0 (43 files), ruff 0, pytest 34 passed / 1 xfailed / 2 xpass baseline. Assess native: high_risk (hot_path auth) → verifier independiente exit pass, 0 bloqueantes. Findings menores documentados: RLS `SET LOCAL` queda como hardening postgres (la isolation primaria funciona por ContextVar), `get_current_user_optional` no setea tenant (no aplica hoy).
+- Siguiente: T6-T9 (agente Go).
 
 ## Rutas por task
 

@@ -2,25 +2,25 @@
 
 Este repositorio fuerza filtro por tenant_id en TODAS las queries.
 La RLS en PostgreSQL es la red de seguridad; esto es la primera línea.
-
-Nota: `from __future__ import annotations` es necesario porque el método `list`
-sombrea al builtin `list` en el namespace de la clase; sin anotaciones diferidas,
-`list[dict]` intentaría subscriptar al método y fallaría en runtime.
 """
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, func, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
 from app.core.tenant.context import require_tenant_context
 from app.models.base import TenantAwareMixin
 
+_ModelT = TypeVar("_ModelT", bound=TenantAwareMixin)
 
-class TenantScopedRepository:
+
+class TenantScopedRepository[ModelT]:
     """
     Repositorio base que aplica filtro de tenant automáticamente.
 
@@ -29,12 +29,12 @@ class TenantScopedRepository:
             model = Server
 
         repo = ServerRepository(session)
-        servers = await repo.list()  # Solo servers del tenant actual
+        servers = await repo.list_all()  # Solo servers del tenant actual
     """
 
-    model: type[TenantAwareMixin]
+    model: type[ModelT]
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self._tenant_id = require_tenant_context()
 
@@ -44,36 +44,36 @@ class TenantScopedRepository:
 
     def _base_select(self) -> Select:
         """Select base con filtro tenant_id = contexto actual."""
-        return select(self.model).where(self.model.tenant_id == self._tenant_id)
+        return select(self.model).where(cast(Any, self.model).tenant_id == self._tenant_id)
 
     def _apply_tenant_filter(self, stmt: Select) -> Select:
         """Aplica filtro de tenant a un statement existente."""
-        return stmt.where(self.model.tenant_id == self._tenant_id)
+        return stmt.where(cast(Any, self.model).tenant_id == self._tenant_id)
 
     # ──────────────────────────────────────────────
     # CRUD básico con tenant scoping
     # ──────────────────────────────────────────────
 
-    async def get(self, id: UUID) -> TenantAwareMixin | None:
+    async def get(self, id: UUID) -> ModelT | None:
         """Obtiene una entidad por ID (solo si pertenece al tenant actual)."""
-        stmt = self._base_select().where(self.model.id == id)
+        stmt = self._base_select().where(cast(Any, self.model).id == id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by(self, **filters) -> TenantAwareMixin | None:
+    async def get_by(self, **filters: Any) -> ModelT | None:  # type: ignore[explicit-any]
         """Obtiene una entidad por filtros arbitrarios + tenant."""
         stmt = self._base_select().filter_by(**filters)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list(
+    async def list_all(
         self,
         *,
         offset: int = 0,
         limit: int = 100,
         order_by: InstrumentedAttribute | None = None,
-        **filters,
-    ) -> Sequence[TenantAwareMixin]:
+        **filters: Any,  # type: ignore[explicit-any]
+    ) -> Sequence[ModelT]:
         """Lista entidades con paginación y filtros opcionales + tenant."""
         stmt = self._base_select().filter_by(**filters)
         if order_by is not None:
@@ -82,11 +82,9 @@ class TenantScopedRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def count(self, **filters) -> int:
+    async def count(self, **filters: Any) -> int:  # type: ignore[explicit-any]
         """Cuenta entidades con filtros opcionales + tenant."""
-        from sqlalchemy import func
-
-        stmt = select(func.count()).select_from(self.model).where(self.model.tenant_id == self._tenant_id)
+        stmt = select(func.count()).select_from(self.model).where(cast(Any, self.model).tenant_id == self._tenant_id)
         if filters:
             stmt = stmt.filter_by(**filters)
         result = await self.session.execute(stmt)
@@ -94,17 +92,15 @@ class TenantScopedRepository:
 
     async def exists(self, id: UUID) -> bool:
         """Verifica si existe una entidad (solo en tenant actual)."""
-        from sqlalchemy import func
-
         stmt = (
             select(func.count())
             .select_from(self.model)
-            .where(self.model.id == id, self.model.tenant_id == self._tenant_id)
+            .where(cast(Any, self.model).id == id, cast(Any, self.model).tenant_id == self._tenant_id)
         )
         result = await self.session.execute(stmt)
         return result.scalar_one() > 0
 
-    async def create(self, **data) -> TenantAwareMixin:
+    async def create(self, **data: Any) -> ModelT:  # type: ignore[explicit-any]
         """
         Crea una entidad forzando tenant_id del contexto actual.
         Ignora cualquier tenant_id pasado en data (seguridad).
@@ -116,7 +112,7 @@ class TenantScopedRepository:
         await self.session.refresh(obj)
         return obj
 
-    async def update(self, id: UUID, **data) -> TenantAwareMixin | None:
+    async def update(self, id: UUID, **data: Any) -> ModelT | None:  # type: ignore[explicit-any]
         """Actualiza una entidad (solo si pertenece al tenant actual)."""
         obj = await self.get(id)
         if not obj:
@@ -146,7 +142,7 @@ class TenantScopedRepository:
     # Bulk operations con tenant scoping
     # ──────────────────────────────────────────────
 
-    async def bulk_create(self, items: list[dict]) -> list[TenantAwareMixin]:
+    async def bulk_create(self, items: list[dict]) -> list[ModelT]:
         """Crea múltiples entidades forzando tenant_id."""
         for item in items:
             item["tenant_id"] = self._tenant_id
@@ -159,13 +155,11 @@ class TenantScopedRepository:
 
     async def bulk_delete(self, ids: list[UUID]) -> int:
         """Elimina múltiples entidades (solo del tenant actual)."""
-        from sqlalchemy import delete
-
         stmt = delete(self.model).where(
-            self.model.id.in_(ids), self.model.tenant_id == self._tenant_id
+            cast(Any, self.model).id.in_(ids), cast(Any, self.model).tenant_id == self._tenant_id
         )
         result = await self.session.execute(stmt)
-        return result.rowcount
+        return cast(CursorResult, result).rowcount
 
     # ──────────────────────────────────────────────
     # Raw query helper (para queries complejas)

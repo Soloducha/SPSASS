@@ -1,15 +1,20 @@
 """Modelo Service."""
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey
+from sqlalchemy import JSON, ForeignKey, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
+from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from app.models.server import Server
 
 
-class ServiceState(str, enum.Enum):
+class ServiceState(enum.StrEnum):
     """Estado del servicio."""
     RUNNING = "running"
     STOPPED = "stopped"

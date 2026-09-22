@@ -1,14 +1,14 @@
 """Modelo Tenant."""
 import enum
-from uuid import UUID
 
-from sqlalchemy import Enum as SAEnum, JSON, String
+from sqlalchemy import JSON, String
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
 
-class PlanType(str, enum.Enum):
+class PlanType(enum.StrEnum):
     """Planes de suscripción."""
     FREE = "free"
     STARTER = "starter"

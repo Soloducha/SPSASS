@@ -2,7 +2,6 @@
 
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -28,12 +27,14 @@ else:
 
 def hash_password(password: str) -> str:
     """Hashea una contraseña usando bcrypt."""
-    return pwd_context.hash(password)
+    hashed: str = pwd_context.hash(password)
+    return hashed
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifica una contraseña contra su hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    verified: bool = pwd_context.verify(plain_password, hashed_password)
+    return verified
 
 
 # ──────────────────────────────────────────────
@@ -80,7 +81,8 @@ def create_access_token(
         exp=int(expire.timestamp()),
         iat=int(now.timestamp()),
     )
-    return jwt.encode(payload.model_dump(), settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    token: str = jwt.encode(payload.model_dump(), settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    return token
 
 
 def create_refresh_token(user_id: str, tenant_id: str, role: str, is_superuser: bool = False, expires_delta: timedelta | None = None) -> str:
@@ -96,21 +98,23 @@ def create_refresh_token(user_id: str, tenant_id: str, role: str, is_superuser: 
         exp=int(expire.timestamp()),
         iat=int(now.timestamp()),
     )
-    return jwt.encode(payload.model_dump(), settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    token: str = jwt.encode(payload.model_dump(), settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    return token
 
 
 def decode_token(token: str) -> TokenPayload | RefreshTokenPayload:
     """Decodifica y valida un JWT."""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-        token_type = payload.get("type")
-        if token_type == "access":
-            return TokenPayload(**payload)
-        elif token_type == "refresh":
-            return RefreshTokenPayload(**payload)
-        raise JWTError("Invalid token type")
     except JWTError as e:
         raise JWTError(f"Token inválido: {e}") from e
+
+    token_type = payload.get("type")
+    if token_type == "access":
+        return TokenPayload(**payload)
+    if token_type == "refresh":
+        return RefreshTokenPayload(**payload)
+    raise JWTError("Invalid token type")
 
 
 # ──────────────────────────────────────────────

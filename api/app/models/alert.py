@@ -3,27 +3,28 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey, Text
+from sqlalchemy import JSON, ForeignKey, String, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
+from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
 
 
-class AlertSeverity(str, enum.Enum):
+class AlertSeverity(enum.StrEnum):
     """Severidad de alerta."""
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
 
 
-class AlertStatus(str, enum.Enum):
+class AlertStatus(enum.StrEnum):
     """Estado de alerta."""
     OPEN = "open"
     ACKNOWLEDGED = "acknowledged"
     RESOLVED = "resolved"
 
 
-class AlertOperator(str, enum.Enum):
+class AlertOperator(enum.StrEnum):
     """Operadores para reglas de alerta."""
     GT = "gt"      # >
     GTE = "gte"    # >=
@@ -33,7 +34,7 @@ class AlertOperator(str, enum.Enum):
     NEQ = "neq"    # !=
 
 
-class EntityType(str, enum.Enum):
+class EntityType(enum.StrEnum):
     """Tipo de entidad monitoreada."""
     SERVER = "server"
     SERVICE = "service"

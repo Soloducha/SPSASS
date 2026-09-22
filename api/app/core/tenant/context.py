@@ -4,6 +4,7 @@ Usa contextvars para almacenar el tenant_id por request (async-safe).
 Este contexto se inyecta en PostgreSQL via `SET LOCAL app.tenant_id = '...'`
 para que las políticas RLS funcionen.
 """
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from uuid import UUID
@@ -21,7 +22,7 @@ _tenant_set_var: ContextVar[bool] = ContextVar("tenant_set", default=False)
 class TenantContext:
     """Contenedor de información del tenant actual en el request."""
 
-    def __init__(self, tenant_id: UUID):
+    def __init__(self, tenant_id: UUID) -> None:
         self.tenant_id = tenant_id
 
     def __repr__(self) -> str:
@@ -73,7 +74,7 @@ def is_tenant_context_set() -> bool:
 
 
 @contextmanager
-def tenant_context(tenant_id: UUID):
+def tenant_context(tenant_id: UUID) -> Iterator[None]:
     """
     Context manager para setear tenant temporalmente.
     Útil en tests, workers, o código que necesita cambiar de tenant.

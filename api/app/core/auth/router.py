@@ -2,8 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, status
 
 from app.core.auth.dependencies import (
     CurrentTenant,
@@ -17,8 +16,8 @@ from app.core.auth.schemas import (
     ApiKeyListResponse,
     ApiKeyResponse,
     LoginRequest,
-    RegisterRequest,
     RefreshRequest,
+    RegisterRequest,
     TokenResponse,
     UserResponse,
 )

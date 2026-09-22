@@ -1,15 +1,20 @@
 """Modelo Metric (TimescaleDB hypertable)."""
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey, Index
+from sqlalchemy import JSON, ForeignKey, Index
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantAwareMixin
 
+if TYPE_CHECKING:
+    from app.models.server import Server
 
-class MetricType(str, enum.Enum):
+
+class MetricType(enum.StrEnum):
     """Tipos de métricas soportados."""
     CPU_USAGE = "cpu_usage"
     MEM_USAGE = "mem_usage"

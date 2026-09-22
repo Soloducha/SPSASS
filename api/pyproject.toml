@@ -48,10 +48,20 @@ exclude = ["tests*", "alembic*"]
 target-version = "py312"
 line-length = 100
 src = ["app"]
+extend-exclude = ["alembic"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "ANN", "T20", "PTH", "ERA", "PL", "TRY", "SIM", "RET"]
-ignore = ["ANN101", "ANN102", "ARG001", "ARG002", "B008", "PLW0603", "PTH123", "TRY003", "SIM117"]
+ignore = ["ARG001", "ARG002", "B008", "PLW0603", "PTH123", "TRY003", "SIM117", "E501", "E402"]
+
+# Style/lint opinion exclusions (pragmatic gate, see odd/tasks/quality-gate.md):
+# - tests: HTTP status codes as magic values are idiomatic.
+# - scripts: CLI tools legitimately print; seed_admin is a dev script (large main).
+# - repositories/base.py: Generic repository needs Any for **kwargs (filters, data).
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PLR2004"]
+"scripts/*" = ["T201", "PLR2004", "PLR0915"]
+"app/repositories/base.py" = ["ANN401"]
 
 [tool.ruff.format]
 quote-style = "double"

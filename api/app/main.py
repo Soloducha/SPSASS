@@ -1,7 +1,7 @@
 """Punto de entrada principal de la API FastAPI."""
 
 import time
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis
@@ -13,7 +13,7 @@ from sqlalchemy import text
 from app.api import auth_router
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
-from app.core.tenant.middleware import TenantMiddleware
+from app.core.tenant.middleware import RequestResponseEndpoint, TenantMiddleware
 from app.db.session import close_db, get_engine, init_db
 
 # Configurar logging al importar
@@ -65,7 +65,7 @@ app.add_middleware(TenantMiddleware)
 # Middleware de logging de requests
 # ──────────────────────────────────────────────
 @app.middleware("http")
-async def log_requests(request: Request, call_next: Callable[[Request], Response]) -> Response:
+async def log_requests(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """Loggea requests entrantes y salientes."""
     start_time = time.time()
     response = await call_next(request)

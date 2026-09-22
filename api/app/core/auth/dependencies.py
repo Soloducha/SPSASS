@@ -1,17 +1,19 @@
 """Dependencias FastAPI para auth y RBAC."""
 
-from typing import Annotated
-from uuid import UUID
+from collections.abc import AsyncGenerator, Callable, Coroutine
+from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth.schemas import UserResponse
-from app.core.auth.security import decode_token
 from app.core.auth.service import (
     InvalidTokenError,
-    get_current_user as service_get_current_user,
     verify_api_key_from_header,
+)
+from app.core.auth.service import (
+    get_current_user as service_get_current_user,
 )
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -26,7 +28,8 @@ settings = get_settings()
 # ──────────────────────────────────────────────
 # Database Session Dependency
 # ──────────────────────────────────────────────
-async def get_session() -> AsyncSession:
+
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependencia para obtener sesión de BD."""
     async with get_db_session() as session:
         yield session
@@ -96,7 +99,8 @@ OptionalUser = Annotated[User | None, Depends(get_current_user_optional)]
 # ──────────────────────────────────────────────
 # RBAC Dependencies
 # ──────────────────────────────────────────────
-def require_role(*allowed_roles: UserRole):
+
+def require_role(*allowed_roles: UserRole) -> Callable[..., Coroutine[Any, Any, User]]:
     """
     Dependencia factory que requiere uno de los roles permitidos.
     Uso: `Depends(require_role(UserRole.ADMIN, UserRole.OWNER))`
@@ -138,8 +142,6 @@ async def get_current_tenant(
     Obtiene el tenant del usuario actual (desde JWT).
     El tenant_id viene en el token, verificamos que exista.
     """
-    from sqlalchemy import select
-
     result = await session.execute(select(Tenant).where(Tenant.id == user.tenant_id))
     tenant = result.scalar_one_or_none()
 

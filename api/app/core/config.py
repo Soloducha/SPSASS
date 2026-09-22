@@ -3,15 +3,20 @@
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
 from pydantic.types import StringConstraints
-from typing_extensions import Annotated as TypedAnnotated
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Type que acepta tanto PostgreSQL como SQLite (para tests)
 DatabaseDsn = Annotated[
     str,
     StringConstraints(pattern=r"^(postgresql(\+\w+)?|sqlite(\+\w+)?)://"),
+]
+
+# Redis URL type (validated as string, Pydantic validates on init)
+RedisUrl = Annotated[
+    str,
+    StringConstraints(pattern=r"^redis(\+\w+)?://"),
 ]
 
 
@@ -44,7 +49,7 @@ class Settings(BaseSettings):
     # ──────────────────────────────────────────────
     # Redis
     # ──────────────────────────────────────────────
-    REDIS_URL: RedisDsn = Field(
+    REDIS_URL: RedisUrl = Field(
         default="redis://localhost:6379/0",
         description="URL de conexión a Redis",
     )

@@ -1,15 +1,15 @@
 """Modelo Report."""
 import enum
 from datetime import datetime
-from uuid import UUID
 
-from sqlalchemy import Enum as SAEnum, JSON, String, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import JSON, String
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, UUIDMixin, TenantAwareMixin
+from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
 
 
-class ReportType(str, enum.Enum):
+class ReportType(enum.StrEnum):
     """Tipos de reporte."""
     AVAILABILITY = "availability"
     INCIDENTS = "incidents"
@@ -18,7 +18,7 @@ class ReportType(str, enum.Enum):
     METRICS = "metrics"
 
 
-class ReportStatus(str, enum.Enum):
+class ReportStatus(enum.StrEnum):
     """Estado del reporte."""
     PENDING = "pending"
     GENERATING = "generating"

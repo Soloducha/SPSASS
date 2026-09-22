@@ -207,7 +207,7 @@ async def refresh_access_token(refresh_token: str) -> TokenResponse:
         raise InvalidTokenError(f"Refresh token inválido: {e}") from e
 
     if payload.type != "refresh":
-        raise InvalidTokenError("Token no es un refresh token")
+        raise InvalidTokenError("Refresh token inválido: token no es un refresh token")
 
     # Verificar que el usuario existe y está activo
     async with get_db_session() as session:
@@ -241,7 +241,7 @@ async def get_current_user(session: AsyncSession, token: str) -> User:
         raise InvalidTokenError(f"Token inválido: {e}") from e
 
     if payload.type != "access":
-        raise InvalidTokenError("Token no es un access token")
+        raise InvalidTokenError("Token inválido: token no es un access token")
 
     result = await session.execute(
         select(User).where(User.id == UUID(payload.sub))

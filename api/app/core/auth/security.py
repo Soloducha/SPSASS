@@ -114,7 +114,7 @@ def decode_token(token: str) -> TokenPayload | RefreshTokenPayload:
         return TokenPayload(**payload)
     if token_type == "refresh":
         return RefreshTokenPayload(**payload)
-    raise JWTError("Invalid token type")
+    raise JWTError("Token inválido: tipo de token inválido")
 
 
 # ──────────────────────────────────────────────

@@ -37,6 +37,7 @@ Corregir la deuda de calidad estática de la API (41 errores mypy, ~240 hallazgo
 - `mypy app` → 0 errores
 - `ruff check .` (config nueva) → 0 errores
 - Gate CI aplicado: ruff config-driven `app/` + `mypy app`
+- Commit work-unit: `97fa18d` en `feature/quality-gate` (review RDD escalada por causalidad desconocida; RDD desactivado clone-scoped por decisión del usuario, delivery por política ordinaria).
 
 ## Decisiones
 - 2026-09-21: vía pragmática elegida por el usuario (vs lavado total): se corrigen lints con valor real; estilo puro (E501, ANN) y opinables (PLR2004 tests, T201 scripts) quedan fuera del gate documentados.

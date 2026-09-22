@@ -1,7 +1,8 @@
 # Follow-ups review quality-gate — investigación de causalidad y fixes
 
-> Estado: **en implementación** — investigación completada, 2 fixes delegados.
-> Branch: `feature/review-followups` (base: `main`@`cd422c1`).
+> Estado: **cerrado** — ambos fixes verificados (mypy/ruff/pytest + verifier independiente pass) y commiteados.
+> Commit work-unit: `51a3904` en `feature/review-followups` (base `main`, no mergeado — decisión del usuario al volver).
+> Branch: `feature/review-followups`
 > Origen: review nativa RDD de `97fa18d` (lineage `review-488b6c35560cba57`), escalada a `stop` por causalidad desconocida. RDD desactivado clone-scoped (decisión del usuario); delivery por política ordinaria.
 
 ## Investigación de causalidad (completada — 2026-09-22)
@@ -26,7 +27,7 @@ Verificada contra `git diff e07b3fa 97fa18d` (antes/después) y código actual e
 |----|-------|--------|-----------|
 | T1 | Restaurar mensajes de error con contexto en `decode_token`, `refresh_access_token`, `get_current_user` | ✅ | security.py:117 (`Token inválido: tipo de token inválido`), service.py:210 (prefijo `Refresh token inválido:`), service.py:244 (prefijo `Token inválido:`) |
 | T2 | Eliminar `cast(Any, self.model)` del repo genérico | ✅ | base.py: 12 casts eliminados → `self.model.X` + 7 `# type: ignore[attr-defined]` documentados; `cast(CursorResult, result)` → `result.rowcount` con ignore. Protocol falló en mypy (no propaga ClassVar a `type[T]`); solución: TypeVar bound + PEP 695 `TenantScopedRepository[T]` |
-| T3 | Actualizar tracker con resultados y commit work-unit | 🔲 | — |
+| T3 | Actualizar tracker con resultados y commit work-unit | ✅ | Commit `51a3904` (4 files, +71/−50); verifier independiente `exit: pass`; assess high_risk (auth hot path) verificado
 
 ### Verificación ejecutada (writer + spot check parent)
 - `mypy app` → Success: no issues found in 37 source files

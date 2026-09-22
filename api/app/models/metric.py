@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import JSON, ForeignKey, Index
+from sqlalchemy import JSON, DateTime, ForeignKey, Index
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,7 +36,7 @@ class Metric(Base, TenantAwareMixin):
     )
 
     # PK compuesta para hypertable: (ts, server_id) - TimescaleDB requiere timestamp en PK
-    ts: Mapped[datetime] = mapped_column(nullable=False, primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, primary_key=True)
     server_id: Mapped[UUID] = mapped_column(
         ForeignKey("servers.id", ondelete="CASCADE"), nullable=False, primary_key=True
     )

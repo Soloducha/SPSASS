@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, String
+from sqlalchemy import JSON, DateTime, String
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,7 +37,7 @@ class Server(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
         default=ServerStatus.UNKNOWN,
         nullable=False,
     )
-    last_heartbeat_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     alert_channels: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     # Relaciones

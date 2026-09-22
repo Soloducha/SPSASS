@@ -1,31 +1,53 @@
-# TODO — mañana: investigar causalidad de los hallazgos severos del quality-gate (mes 2 agenda)
+# Follow-ups review quality-gate — investigación de causalidad y fixes
 
-> Originó: review nativa RDD del commit `fa63fdc` (feature `97fa18d`, base `e07b3fa`), que escaló a `stop` por causalidad desconocida con 10 hallazgos severos. RDD quedó desactivado **clone-scoped** (decisión del usuario, opción D) — el delivery de `97fa18d` se hizo por política ordinaria con merge vía PR.
->
-> Estos hallazgos NO fueron reparados ni descartados: quedaron como follow-ups con causalidad sin determinar. Está TODO para descartar causalidad y decidir fijarlo/descartarlo.
+> Estado: **cerrado** — ambos fixes verificados (mypy/ruff/pytest + verifier independiente pass) y commiteados.
+> Commit work-unit: `51a3904` en `feature/review-followups` (base `main`, no mergeado — decisión del usuario al volver).
+> Branch: `feature/review-followups`
+> Origen: review nativa RDD de `97fa18d` (lineage `review-488b6c35560cba57`), escalada a `stop` por causalidad desconocida. RDD desactivado clone-scoped (decisión del usuario); delivery por política ordinaria.
 
-## Hallazgos severos a investigar (10)
+## Investigación de causalidad (completada — 2026-09-22)
 
-| ID | Hallazgo | Lente | Estado |
-|----|---------|-------|--------|
-| R2-1 | — | Readability | 🔍 causalidad pendiente |
-| R2-2 | — | Readability | 🔍 causalidad pendiente |
-| R3-1 | — | Reliability | 🔍 causalidad pendiente |
-| R3-2 | — | Reliability | 🔍 causalidad pendiente |
-| R3-3 | — | Reliability | 🔍 causalidad pendiente |
-| R3-4 | — | Reliability | 🔍 causalidad pendiente |
-| R3-5 | — | Reliability | 🔍 causalidad pendiente |
-| R4-1 | — | Resilience | 🔍 causalidad pendiente |
-| R4-2 | — | Resilience | 🔍 causalidad pendiente |
-| R4-3 | — | Resilience | 🔍 causalidad pendiente |
+Verificada contra `git diff e07b3fa 97fa18d` (antes/después) y código actual en `main`; sin cambios posteriores al merge en los archivos señalados.
 
-> Nota: el contenido textual de cada hallazgo vive en el artifact de review (lineage `lineage-...` del commit `fa63fdc`). Este doc es el tracker de seguimiento, no reemplaza el contenido del artifact.
+**Descartados — falsos positivos (3):**
+- **R3-5** (`bulk_delete` `cast(CursorResult, result).rowcount`): `cast()` es no-op en runtime; `execute(delete(...))` siempre devuelve `CursorResult` con `rowcount`. Solo typing.
+- **R4-1** (SQLite sin `pool_pre_ping`): pre-existing (el base tampoco lo tenía; el diff solo refactoriza dict→if/else) y claim incoherente (SQLite solo tests/dev con `StaticPool`).
+- **R4-3** (`refresh_access_token` sin cleanup): falso — la sesión se crea con `async with get_db_session()` y está **fuera** del try.
 
-## Verificación (cómo se cierra cada uno)
-- [ ] Reproducir/confirmar el hallazgo contra el código actual (`main`@... después del merge + push de mes 2).
-- [ ] Determinar causa raíz o descartar con evidencia.
-- [ ] Dejar decisión: fix aplicado en un work-unit | issue documentado | descartado (con motivo).
+**Duplicados (4):** R3-2, R3-3, R4-2 = mismo cambio que R3-1 (type-check fuera del try en auth); R3-4 = duplicado de R2-2 (bounds del TypeVar garantizan tenant_id en typing/runtime).
+
+**Válidos con severidad inflada (3):**
+- **R2-1**: `list_all` mantiene paginación — naming cosmético; la docstring documenta paginación.
+- **R2-2** (y R3-4): `cast(Any, self.model)` ×12 — deuda de tipado real. El TypeVar bound `_ModelT` está definido pero **sin usar**; la clase usa `[ModelT]` inline sin bound. Fix: Protocol con `id` + `tenant_id` y bound del TypeVar → eliminar casts si mypy pasa.
+- **R3-1** (y duplicados): mensajes de error de token pierden el prefijo de contexto (`Token inválido:` / `Refresh token inválido:`) tras mover el type-check fuera del try. Fix: restaurar contexto en los raise.
+
+## Tareas
+
+| ID | Tarea | Estado | Evidencia |
+|----|-------|--------|-----------|
+| T1 | Restaurar mensajes de error con contexto en `decode_token`, `refresh_access_token`, `get_current_user` | ✅ | security.py:117 (`Token inválido: tipo de token inválido`), service.py:210 (prefijo `Refresh token inválido:`), service.py:244 (prefijo `Token inválido:`) |
+| T2 | Eliminar `cast(Any, self.model)` del repo genérico | ✅ | base.py: 12 casts eliminados → `self.model.X` + 7 `# type: ignore[attr-defined]` documentados; `cast(CursorResult, result)` → `result.rowcount` con ignore. Protocol falló en mypy (no propaga ClassVar a `type[T]`); solución: TypeVar bound + PEP 695 `TenantScopedRepository[T]` |
+| T3 | Actualizar tracker con resultados y commit work-unit | ✅ | Commit `51a3904` (4 files, +71/−50); verifier independiente `exit: pass`; assess high_risk (auth hot path) verificado
+
+### Verificación ejecutada (writer + spot check parent)
+- `mypy app` → Success: no issues found in 37 source files
+- `ruff check app` → All checks passed!
+- `ruff check .` → All checks passed!
+- `pytest -q` → 28 passed, 1 xfailed, 2 xpassed (20s)
+- NOTA: los 2 xpassed son **pre-existentes** (verificado con `git stash` baseline: igual resultado). Vienen del bump pytest 8→9 (deps-refresh), no del fix. Los 3 tests xfail de UUID/SQLite: 2 ahora pasan, 1 sigue xfail. Fuera de alcance de este work-unit.
+
+## Alcance autorizado
+- Fixes solo en: `api/app/core/auth/security.py`, `api/app/core/auth/service.py`, `api/app/repositories/base.py` (+ tests si hace falta).
+- NO tocar R3-5/R4-1/R4-3 (descartados) ni renombrar `list_all` (documentado, no se toca).
+- Verificación: `mypy app` = 0, `ruff check app` = 0, `ruff check .` = 0, `pytest` = 28 passed / 3 xfailed.
+
+## Verificación
+- `mypy app` → 0 errores (en `api/`)
+- `ruff check app` y `ruff check .` → 0
+- `pytest -q` → 28 passed, 3 xfailed
+- Commit work-unit en `feature/review-followups`, conventional commit.
 
 ## Enlace
-- Feature doc del mes 1 (fundaciones): `odd/tasks/fundaciones.md`
-- Propuesta/roadmap: `propuesta.md` (sección 7, mes 2 = Agente + ingesta)
+- Feature doc mes 1: `odd/tasks/fundaciones.md`
+- TODO mes 2: `odd/tasks/mes2-agente-ingesta.md`
+- Roadmap: `propuesta.md` (sección 7)

@@ -78,8 +78,12 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         # Inyectar tenant_id en sesión PostgreSQL para RLS
         tenant_ctx = get_tenant_context()
         if tenant_ctx:
-            await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_ctx.tenant_id)})
-            logger.debug("db_session_tenant_injected", tenant_id=str(tenant_ctx.tenant_id))
+            # Solo ejecutar SET LOCAL en PostgreSQL (SQLite no lo soporta)
+            db_url = str(settings.DATABASE_URL)
+            is_sqlite = db_url.startswith("sqlite")
+            if not is_sqlite:
+                await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_ctx.tenant_id)})
+                logger.debug("db_session_tenant_injected", tenant_id=str(tenant_ctx.tenant_id))
 
         yield session
         await session.commit()

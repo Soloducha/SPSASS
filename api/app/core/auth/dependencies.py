@@ -17,6 +17,7 @@ from app.core.auth.service import (
 )
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.tenant.context import set_tenant_context
 from app.db.session import get_db_session
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
@@ -71,6 +72,8 @@ async def get_current_user(
 
     # Setea tenant_id en request state para middleware
     request.state.tenant_id = user.tenant_id
+    # Inyecta tenant en ContextVar para TenantScopedRepository (T1 fix)
+    set_tenant_context(user.tenant_id)
 
     return user
 
@@ -189,6 +192,8 @@ async def get_tenant_from_api_key(
 
     # Setea tenant_id en request state para middleware
     request.state.tenant_id = tenant.id
+    # Inyecta tenant en ContextVar para TenantScopedRepository (T1 fix)
+    set_tenant_context(tenant.id)
 
     return tenant, api_key.name
 

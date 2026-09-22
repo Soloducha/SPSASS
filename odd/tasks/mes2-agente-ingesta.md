@@ -43,18 +43,18 @@ No existe telemetría todavía. El mes 1 dejó auth + multi-tenant + models (`Se
 - [x] **T3 — Heartbeat** — `POST /api/v1/servers/{id}/heartbeat` tenant-scoped (404 cross-tenant). Tests HTTP. Commit `3e41660`.
 - [x] **T4 — Ingesta de métricas** — `POST /api/v1/ingest/metrics`, batch cap 1000, PK compuesta con microsecond offsets, `{received, inserted}`. Tests HTTP + persistencia verificada. Commit `3e41660`.
 - [x] **T5 — Ruteo y model wiring** — `api/app/api/v1/` con `servers.py`, `ingest.py`, registrados en `main.py`. Commit `3e41660`.
-- [ ] **T6 — Agente Go: estructura + collector** — `cmd/agent/main.go`, `internal/collector` con gopsutil v3: CPU %, mem, disco, load avg cada 30s; struct `MetricsBatch` que matchea el payload de la API.
-- [ ] **T7 — Agente Go: sender** — `internal/sender`: registro (`/servers/register`), heartbeat periódico (`/servers/{id}/heartbeat`), push HTTPS (`/ingest/metrics`) con header `X-Api-Key`, retry/backoff, timeouts.
-- [ ] **T8 — Agente Go: config + main** — configuración por env/flags (API URL, API key, intervalo, server id), logging, shutdown graceful, binario estático (`CGO_ENABLED=0 go build -ldflags="-s -w"`).
-- [ ] **T9 — Agente Go: tests** — tests unitarios de collector (mock de gopsutil) y sender (httptest), `go vet` + `go test` limpios.
+- [x] **T6 — Agente Go: estructura + collector** — `cmd/agent/main.go`, `internal/collector` con gopsutil v3: CPU %, mem, disco, load avg cada 30s; struct `MetricsBatch` que matchea el payload de la API.
+- [x] **T7 — Agente Go: sender** — `internal/sender`: registro (`/servers/register`), heartbeat periódico (`/servers/{id}/heartbeat`), push HTTPS (`/ingest/metrics`) con header `X-Api-Key`, retry/backoff, timeouts.
+- [x] **T8 — Agente Go: config + main** — configuración por env/flags (API URL, API key, intervalo, server id), logging, shutdown graceful, binario estático (`CGO_ENABLED=0 go build -ldflags="-s -w"`).
+- [x] **T9 — Agente Go: tests** — tests unitarios de collector (mock de gopsutil) y sender (httptest), `go vet` + `go test` limpios.
 
 ## Acceptance Criteria
 
-- [ ] Un agente con API key válida puede registrarse, hacer heartbeat y enviar métricas a la API; las métricas se persisten con `tenant_id` del tenant de la key.
-- [ ] Un API key de tenant A NO puede registrar/heartbeat/ingestar para un server de tenant B (404 o 403, sin fuga).
-- [ ] `mypy app` = 0 errores; `ruff check app` = 0; `pytest` verde (sin xpass nuevos) en `api/`.
-- [ ] `go vet ./...` y `go test ./...` verdes en `agent/`.
-- [ ] El agente compila estático y reporta métricas contra una API local de desarrollo.
+- [x] Un agente con API key válida puede registrarse, hacer heartbeat y enviar métricas a la API; las métricas se persisten con `tenant_id` del tenant de la key.
+- [x] Un API key de tenant A NO puede registrar/heartbeat/ingestar para un server de tenant B (404 o 403, sin fuga).
+- [x] `mypy app` = 0 errores; `ruff check app` = 0; `pytest` verde (sin xpass nuevos) en `api/`.
+- [x] `go vet ./...` y `go test ./...` verdes en `agent/`.
+- [x] El agente compila estático y reporta métricas contra una API local de desarrollo.
 
 ## Checks aplicables
 
@@ -66,6 +66,16 @@ No existe telemetría todavía. El mes 1 dejó auth + multi-tenant + models (`Se
 - **2026-09-22**: Feature iniciado. Mapeo de la API completado (general subagent): confirmado que `ApiKeyAuth` y flujo API key → tenant existen; encontrado y verificado bug de tenant context en middleware (ver Decisiones). Branch `feature/mes2-agent-ingesta` creada desde `main@cd422c1`.
 - **2026-09-22**: T1-T5 completados (delegado writer + verifier independiente). Commit `3e41660` (11 files, +578/−4). Checks: mypy 0 (43 files), ruff 0, pytest 34 passed / 1 xfailed / 2 xpass baseline. Assess native: high_risk (hot_path auth) → verifier independiente exit pass, 0 bloqueantes. Findings menores documentados: RLS `SET LOCAL` queda como hardening postgres (la isolation primaria funciona por ContextVar), `get_current_user_optional` no setea tenant (no aplica hoy).
 - Siguiente: T6-T9 (agente Go).
+- **2026-09-22**: T6-T9 completados (delegado writer + verifier independiente). Commit `c2fca64` (11 files, +1327/−2). Checks: `go vet` 0, `go test` 18 passed (3 pkgs), build estático ~7MB `CGO_ENABLED=0`. Assess native: medium (executable_change, 1329 líneas, slice_budget_reached) → verifier independiente exit pass, 0 bloqueantes. Findings menores: naming `backoffDuration()` confuso (cosmético), heartbeat arranca tras primer envío exitoso (design choice), disco hardcodeado a `/` (default razonable, no configurable aún).
+- Siguiente (fuera de T1-T9): probar integración real agente↔API en dev, CI gate para Go, rollups y dashboard v0.1 (slices separados).
+- **2026-09-22**: CI gate Go agregado al workflow `.github/workflows/ci.yml` (job `go-agent`: vet + test + static build). Commit `9bf907e`.
+- **2026-09-22**: **Smoke E2E REAL completado (agente↔API, Postgres+Timescale via Docker)**. Docker Desktop arrancado; bundle `db+redis+api` levantado. Encontré y arreglé 2 bugs de la API que bloqueaban el E2E:
+  - Bug 1 (mes 1, auth): `passlib[bcrypt]==1.7.4` sin pin de `bcrypt` → pip instaló bcrypt 5.0.0, incompatible con passlib (rompía register/login/API keys con "password cannot be longer than 72 bytes"). Fix: pin `bcrypt==4.0.1` en `api/pyproject.toml`.
+  - Bug 2 (mes 2, modelos): `Server.last_heartbeat_at` y `Metric.ts` eran `TIMESTAMP WITHOUT TIME ZONE` pero los endpoints mandan `datetime.now(UTC)` (aware) → asyncpg DataError ("can't subtract offset-naive and offset-aware"). SQLite lo toleraba; Postgres no. Fix: `DateTime(timezone=True)` en ambos modelos + ALTER de columnas.
+  - Verificación E2E: agente se registró (server `dec49560...`, hostname DESKTOP-POMJ06A, os=windows, agent_version 0.1.0, ONLINE), 18 métricas reales (6 tipos × 3 intervalos): CPU 6.71%, mem 65.67%, disco 11.20%, load 0. **Cross-tenant OK**: API key de tenant B → heartbeat/ingest contra server de tenant A devuelven 404 "Server no encontrado" (sin fuga de existencia).
+  - Hallazgo adicional no arreglado: `api/scripts/seed_admin.py` corre `asyncio.run(init_db())` y luego `asyncio.run(seed_admin())` en loops distintos → "Event loop is closed" al seedear. Seed via SQL directo para el E2E. Pendiente de fix (mes 1 housekeeping).
+  - Commits de fixes: `e2e-fixes` (bcrypt pin + timezone models).
+- **Pendiente (user al volver)**: rollups y dashboard v0.1 = slices separados. **STACK DE PRs CREADO (stacked-to-main, 3 PRs)**: PR #1 = API ingesta (`feat/mes2-01-api` → https://github.com/Soloducha/SPSASS/pull/2, ~680 líneas); PR #2 = Agente Go + CI gate (`feat/mes2-02-agent` → https://github.com/Soloducha/SPSASS/pull/3, ~1.360 líneas, budget excedido por unidad cohesiva única); PR #3 = Fix E2E (`feat/mes2-03-e2e-fix` → https://github.com/Soloducha/SPSASS/pull/4, ~10 líneas). `main` pusheada (2 docs commits alcanzados). Pendiente: merge en orden 2→3→4; luego limpieza opcional: borrar ramas del stack y entregar `main` (docker compose down opcional).
 
 ## Rutas por task
 

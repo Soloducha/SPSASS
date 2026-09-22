@@ -48,6 +48,33 @@ jobs:
         run: pytest -v --tb=short
 
   # ──────────────────────────────────────────────
+  # Go agent — vet + tests + static build
+  # ──────────────────────────────────────────────
+  go-agent:
+    name: Go agent (vet + tests + static build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./agent
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go tests
+        run: go test ./...
+
+      - name: Static build (CGO disabled)
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o spsaas-agent ./cmd/agent
+
+  # ──────────────────────────────────────────────
   # Docker build — validates docker-compose builds
   # ──────────────────────────────────────────────
   docker-build:

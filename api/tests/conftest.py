@@ -54,6 +54,7 @@ async def initialize_database() -> None:
             "jobs",
             "reports",
             "metrics",
+            "metric_rollups",
             "services",
             "processes",
             "servers",

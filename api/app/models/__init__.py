@@ -12,6 +12,7 @@ from app.models.api_key import ApiKey
 from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
 from app.models.job import Job, JobKind, JobRun, JobStatus
 from app.models.metric import Metric, MetricType
+from app.models.metric_rollup import MetricRollup, RollupPeriod
 from app.models.process import Process
 from app.models.report import Report, ReportStatus, ReportType
 from app.models.server import Server, ServerStatus
@@ -43,6 +44,9 @@ __all__ = [
     # Metric
     "Metric",
     "MetricType",
+    # MetricRollup
+    "MetricRollup",
+    "RollupPeriod",
     # Service
     "Service",
     "ServiceState",

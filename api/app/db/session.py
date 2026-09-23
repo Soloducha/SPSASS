@@ -75,15 +75,23 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     session = get_session_factory()()
     try:
-        # Inyectar tenant_id en sesión PostgreSQL para RLS
+        # Inyectar tenant_id y rol de aplicación en sesión PostgreSQL para RLS.
+        # OJO: RLS solo filtra cuando el rol de conexión NO es superuser. La app se
+        # conecta como spsaas (superuser), así que sin el cambio de rol las políticas
+        # de 0003 jamás se activan. SET LOCAL ROLE revierte solo al terminar la
+        # transacción → no hay fuga de rol entre requests del pool.
         tenant_ctx = get_tenant_context()
         if tenant_ctx:
             # Solo ejecutar SET LOCAL en PostgreSQL (SQLite no lo soporta)
             db_url = str(settings.DATABASE_URL)
             is_sqlite = db_url.startswith("sqlite")
             if not is_sqlite:
-                await session.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_ctx.tenant_id)})
-                logger.debug("db_session_tenant_injected", tenant_id=str(tenant_ctx.tenant_id))
+                # SET LOCAL ROLE: sin bind params (Postgres no los acepta en SET).
+                # SET LOCAL app.tenant_id -> set_config(..., is_local=true) que SÍ
+                # acepta bind params; es el equivalente exacto y revierte con la transacción.
+                await session.execute(text("SET LOCAL ROLE app_user"))
+                await session.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": str(tenant_ctx.tenant_id)})
+                logger.debug("db_session_tenant_injected", tenant_id=str(tenant_ctx.tenant_id), role="app_user")
 
         yield session
         await session.commit()

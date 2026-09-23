@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.auth.security import hash_password
 from app.core.config import get_settings
-from app.db.session import get_db_session, init_db
+from app.db.session import close_db, get_db_session, init_db
 from app.models.tenant import PlanType, Tenant
 from app.models.tenant_member import MemberRole, TenantMember
 from app.models.user import User, UserRole
@@ -125,9 +125,17 @@ async def seed_admin() -> None:
     print("\nAhora puedes loguearte en /auth/login")
 
 
+async def main() -> None:
+    """Inicializa BD y ejecuta el seed en un único event loop."""
+    await init_db()
+    try:
+        await seed_admin()
+    finally:
+        await close_db()
+
+
 if __name__ == "__main__":
     import asyncio
 
-    asyncio.run(init_db())
-    asyncio.run(seed_admin())
+    asyncio.run(main())
 

@@ -132,6 +132,9 @@ services:
     container_name: spsaas-web
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      # SSR del dashboard v0.1: el API dentro de la red docker se resuelve por nombre de servicio.
+      # SPSAAS_DASHBOARD_TOKEN es un JWT de servicio (ver web/README.md) y no tiene default por ser secreto.
+      SPSAAS_API_URL: http://api:8000
     ports:
       - "3000:3000"
     depends_on:

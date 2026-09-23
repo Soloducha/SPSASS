@@ -60,6 +60,7 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
+      target: api
     container_name: spsaas-api
     environment:
       DATABASE_URL: postgresql+asyncpg://spsaas:spsaas@db:5432/spsaas
@@ -96,7 +97,8 @@ services:
   worker:
     build:
       context: ./api
-      dockerfile: Dockerfile.worker
+      dockerfile: Dockerfile
+      target: worker
     container_name: spsaas-worker
     environment:
       DATABASE_URL: postgresql+asyncpg://spsaas:spsaas@db:5432/spsaas

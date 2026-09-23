@@ -34,10 +34,13 @@ curl http://localhost:8000/healthz
 | Servicio | Puerto | Descripción |
 |----------|--------|-------------|
 | API (FastAPI) | 8000 | Backend principal + docs en `/docs` |
-| Web (Next.js) | 3000 | Frontend placeholder |
+| Web (Next.js 16) | 3000 | Frontend (scaffold; dashboards pendientes) |
 | PostgreSQL + TimescaleDB | 5432 | Base de datos principal |
 | Redis | 6379 | Broker + cache |
 | Worker (arq) | — | Procesamiento en background |
+
+> El **agente Go no corre en compose**: se compila como binario estático y se ejecuta
+> en cada host monitoreado (ver [`agent/README.md`](agent/README.md)).
 
 ### Comandos útiles
 
@@ -48,8 +51,11 @@ docker compose ps
 # Ejecutar migraciones (la API las corre al inicio, pero manualmente):
 docker compose exec api alembic upgrade head
 
-# Tests de la API
-docker compose exec api pytest -v
+# Bootstrap del primer tenant + admin (requiere variables de entorno)
+docker compose exec \
+  -e SPSAAS_ADMIN_EMAIL=admin@example.com \
+  -e SPSAAS_ADMIN_PASSWORD=securepass123 \
+  api python -m scripts.seed_admin
 
 # Shell en la API
 docker compose exec api bash
@@ -63,26 +69,48 @@ docker compose down -v
 
 ---
 
+## 🌐 API — Endpoints principales
+
+| Método | Ruta | Auth |
+|--------|------|------|
+| `POST` | `/auth/register`, `/auth/login`, `/auth/refresh` | — |
+| `GET` | `/auth/me` | JWT |
+| `POST`/`GET`/`DELETE` | `/auth/api-keys` | JWT |
+| `POST` | `/api/v1/servers/register` | API key (`X-Api-Key`) |
+| `POST` | `/api/v1/servers/{id}/heartbeat` | API key (`X-Api-Key`) |
+| `POST` | `/api/v1/ingest/metrics` | API key (`X-Api-Key`) — 202, batch ≤ 1000 |
+| `GET` | `/healthz`, `/readyz` | — |
+
+Swagger UI: `http://localhost:8000/docs` (solo dev).
+
+---
+
 ## 🏗 Estructura del monorepo
 
 ```
 SPSAAS/
-├── docker-compose.yml          # Stack completo de desarrollo
-├── .gitignore
-├── README.md                   # Este archivo
+├── docker-compose.yml              # Stack completo de desarrollo
+├── .github/workflows/ci.yml        # CI: API (lint+tests), agente Go, docker build
+├── README.md                       # Este archivo
+├── propuesta.md                    # Fuente de verdad: producto + arquitectura
 ├── docs/
-│   └── architecture.md         # Referencia a propuesta.md
-├── api/                        # FastAPI + Alembic + tests
+│   └── architecture.md             # Resumen técnico de la arquitectura
+├── odd/tasks/                      # Feature documents ODD (uno por slice)
+├── api/                            # FastAPI + Alembic + tests
 │   ├── app/
 │   ├── tests/
 │   ├── alembic/
+│   ├── scripts/                    # seed_admin.py (bootstrap tenant + admin)
 │   ├── pyproject.toml
-│   └── Dockerfile
-├── agent/                      # Placeholder Go (meses 2+)
-│   ├── README.md
-│   └── go.mod
-└── web/                        # Next.js 14 placeholder
-    ├── app/
+│   ├── Dockerfile
+│   └── Dockerfile.worker
+├── agent/                          # Agente Go v1 (collector, sender, config + tests)
+│   ├── cmd/agent/
+│   ├── internal/
+│   ├── go.mod
+│   └── README.md
+└── web/                            # Next.js 16 scaffold (dashboards pendientes)
+    ├── src/app/
     ├── package.json
     └── Dockerfile
 ```
@@ -93,41 +121,72 @@ SPSAAS/
 
 - [`propuesta.md`](propuesta.md) — Plan de producto y arquitectura v1.0 (fuente de verdad)
 - [`docs/architecture.md`](docs/architecture.md) — Resumen técnico de la arquitectura
-- [`odd/tasks/fundaciones.md`](odd/tasks/fundaciones.md) — Feature document del mes 1
+- [`odd/tasks/`](odd/tasks/) — Feature documents por slice:
+  - [`fundaciones.md`](odd/tasks/fundaciones.md) — Mes 1: base del monorepo
+  - [`mes2-agente-ingesta.md`](odd/tasks/mes2-agente-ingesta.md) — Mes 2: agente Go + API de ingesta
+  - [`quality-gate.md`](odd/tasks/quality-gate.md) — Gate de calidad (mypy 0 + ruff pragmático)
+  - [`review-followups.md`](odd/tasks/review-followups.md) — Follow-ups de la review quality-gate
+  - [`next16-web.md`](odd/tasks/next16-web.md), [`deps-refresh.md`](odd/tasks/deps-refresh.md) — Web Next 16 + refresh de dependencias
+- Sub-READMEs: [`api/README.md`](api/README.md), [`agent/README.md`](agent/README.md), [`web/README.md`](web/README.md)
 
 ---
 
 ## 🔐 Autenticación y multi-tenant
 
 - **Usuarios**: JWT (access + refresh tokens)
-- **Agentes**: API keys
-- **Multi-tenant**: Shared schema + `tenant_id` + RLS PostgreSQL
-- **Subdominio por tenant**: `acme.spsaas.app`
+- **Agentes**: API keys por tenant (header `X-Api-Key`, prefijo `spsk_`)
+- **Multi-tenant**: shared schema + `tenant_id` + **RLS en PostgreSQL**
+  (migración `0003_enable_rls`; `metrics` se aísla en la app por limitación
+  de TimescaleDB con columnstore)
+- **Subdominio por tenant** (`acme.spsaas.app`): planeado, aún no implementado
+  (hoy el tenant se resuelve por JWT / API key; `X-Tenant-ID` es solo fallback de testing)
 
 ---
 
-## 🧪 Tests
+## 🧪 Tests y quality gate
 
 ```bash
-# Solo API
-docker compose exec api pytest -v
+# API — tests (SQLite in-memory, sin servicios externos)
+cd api
+pytest -v
 
-# Con cobertura
-docker compose exec api pytest --cov=app --cov-report=term-missing
+# API — quality gate (idéntico al de CI)
+ruff check app/
+mypy app
+
+# Agente Go
+cd agent
+go vet ./...
+go test ./...
 ```
+
+Baseline API: **34 passed, 1 xfailed, 2 xpass pre-existentes** (bump pytest 8→9; no tocar).
+
+---
+
+## 🤖 CI (GitHub Actions)
+
+Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — corre en push/PR a `main` y `develop`:
+
+| Job | Qué valida |
+|-----|-----------|
+| `python-api` | `ruff check app/` + `mypy app` + `pytest` (SQLite in-memory) |
+| `go-agent` | `go vet` + `go test` + build estático (`CGO_ENABLED=0`) |
+| `docker-build` | `docker compose build --parallel` |
 
 ---
 
 ## 📦 Deploy (Producción inicial)
 
-Un VPS económico (2 vCPU / 4 GB RAM) con Docker Compose:
+Un VPS económico (2 vCPU / 4 GB RAM) con Docker Compose. Todavía **no existe**
+`docker-compose.prod.yml` (plan pendiente):
 
 ```bash
 # En el VPS
 git clone <repo-url>
 cd SPSAAS
-cp .env.example .env  # Configurar variables de producción
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+cp api/.env.example api/.env   # Configurar variables de producción
+docker compose up -d
 ```
 
 Ver `propuesta.md` sección 4 y 10 para detalles de escalado.
@@ -136,14 +195,16 @@ Ver `propuesta.md` sección 4 y 10 para detalles de escalado.
 
 ## 🗺 Roadmap (6 meses)
 
-| Mes | Foco | Entregables |
-|-----|------|-------------|
-| **1** | Fundaciones | Repo, CI/CD, Docker, auth, multi-tenant, modelos, bootstrap admin |
-| **2** | Agente + ingesta | Agente Go, heartbeat, API ingesta, rollups, dashboard v0.1 |
-| **3** | Alertas | Alert Engine, reglas, dedupe, Telegram + Email |
-| **4** | Procesos + jobs | Servicios/procesos, job monitor, auto-restart, WhatsApp |
-| **5** | Reportes | Disponibilidad, incidentes, SLA, métricas históricas |
-| **6** | Pulido + beta | Onboarding, invitaciones, plan gates, beta cerrada 3-5 pilotos |
+| Mes | Foco | Entregables | Estado |
+|-----|------|-------------|--------|
+| **1** | Fundaciones | Repo, CI/CD, Docker, auth, multi-tenant, modelos, bootstrap admin | ✅ Entregado |
+| **2** | Agente + ingesta | Agente Go v1, heartbeat, API ingesta | 🟡 Entregado (agente + ingesta); **pendientes**: rollups, dashboard v0.1 |
+| **3** | Alertas | Alert Engine, reglas, dedupe, Telegram + Email | ⏳ Próximo |
+| **4** | Procesos + jobs | Servicios/procesos, job monitor, auto-restart, WhatsApp | ⏳ Pendiente |
+| **5** | Reportes | Disponibilidad, incidentes, SLA, métricas históricas | ⏳ Pendiente |
+| **6** | Pulido + beta | Onboarding, invitaciones, plan gates, beta cerrada 3-5 pilotos | ⏳ Pendiente |
+
+Ver `propuesta.md` §7 para la fuente de verdad del roadmap.
 
 ---
 

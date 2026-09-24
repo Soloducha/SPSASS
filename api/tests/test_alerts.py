@@ -545,7 +545,10 @@ class TestAlertRulesAPI:
                     "threshold": 80.0,
                     "duration_s": 60,
                     "severity": "warning",
-                    "channels": {"email": {}, "webhook": {}},
+                    "channels": {
+                        "email": {"to": ["ops@example.com"]},
+                        "webhook": {"url": "https://example.com/webhook"},
+                    },
                     "is_active": True,
                 },
                 headers={"Authorization": f"Bearer {token}"},
@@ -557,7 +560,10 @@ class TestAlertRulesAPI:
             assert rule_data["operator"] == "gt"
             assert rule_data["threshold"] == 80.0
             assert rule_data["severity"] == "warning"
-            assert rule_data["channels"] == {"email": {}, "webhook": {}}
+            assert rule_data["channels"] == {
+                "email": {"to": ["ops@example.com"]},
+                "webhook": {"url": "https://example.com/webhook", "headers": {}},
+            }
             assert rule_data["is_active"] is True
 
             # Listar reglas
@@ -748,7 +754,7 @@ class TestAlertsAPI:
                 "threshold": 80.0,
                 "duration_s": 60,
                 "severity": "warning",
-                "channels": {"email": {}},
+                "channels": {"email": {"to": ["ops@example.com"]}},
             },
             headers={"Authorization": f"Bearer {token}"},
         )

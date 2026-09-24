@@ -1,8 +1,9 @@
 """Entry point para workers arq.
 
-Registra los cron jobs de rollups (1m/5m/1h/1d). Cada job delega en
-``compute_rollups`` con una sesión SIN contexto de tenant: los rollups
-agregan métricas de TODOS los tenants en un solo pase.
+Registra los cron jobs de rollups (1m/5m/1h/1d) y de alertas (1m). Cada
+job delega con una sesión SIN contexto de tenant: los rollups agregan
+métricas de TODOS los tenants y la evaluación de alertas evalúa las
+reglas activas de TODOS los tenants en un solo pase.
 """
 
 import asyncio
@@ -17,6 +18,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
 from app.db.session import get_db_session_without_tenant
 from app.models.metric_rollup import RollupPeriod
+from app.workers.alerts import evaluate_alerts
 from app.workers.rollups import compute_rollups
 
 setup_logging()
@@ -64,6 +66,15 @@ async def rollup_day_1(ctx: dict[str, Any]) -> int:
     return await rollup_metrics_row(ctx, RollupPeriod.DAY_1)
 
 
+# ──────────────────────────────────────────────
+# Job de alertas (evaluación cada minuto).
+# ──────────────────────────────────────────────
+async def evaluate_alerts_row(ctx: dict[str, Any]) -> int:
+    """Evalúa reglas de alerta activas sobre TODOS los tenants (sin contexto tenant)."""
+    async with get_db_session_without_tenant() as session:
+        return await evaluate_alerts(session)
+
+
 class WorkerSettings(WorkerSettingsBase):
     """Configuración de workers arq (convención: atributos → kwargs de Worker)."""
 
@@ -73,12 +84,14 @@ class WorkerSettings(WorkerSettingsBase):
         func(rollup_min_5),
         func(rollup_hour_1),
         func(rollup_day_1),
+        func(evaluate_alerts_row),
     ]
     cron_jobs: list[CronJob] = [
         cron(rollup_min_1, name="rollup-1m", run_at_startup=False, unique=True),
         cron(rollup_min_5, name="rollup-5m", minute=set(range(0, 60, 5)), run_at_startup=False, unique=True),
         cron(rollup_hour_1, name="rollup-1h", minute=0, second=0, run_at_startup=False, unique=True),
         cron(rollup_day_1, name="rollup-1d", hour=0, minute=0, second=0, run_at_startup=False, unique=True),
+        cron(evaluate_alerts_row, name="alert-eval-1m", run_at_startup=False, unique=True),
     ]
     on_startup: StartupShutdown | None = on_startup
     on_shutdown: StartupShutdown | None = on_shutdown

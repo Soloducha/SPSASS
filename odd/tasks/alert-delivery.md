@@ -61,7 +61,8 @@ El Mes 3 crea entregas pendientes pero nadie las envía: el loop de alertas no a
 - [x] Work-unit commits por tarea: d902e96 (T1), f762904 (T2), 68b116a (T3), 8aa4d4e (T4).
 - [x] PR stack stacked-to-main (estrategia confirmada por el usuario): **#12** config → **#13** webhook → **#14** email → **#15** runner (Chain Context + size:exception documentadas por work unit).
 - [x] Doc de arquitectura de canales: `api/app/workers/delivery/README.md` (cómo sumar un canal nuevo).
-- Checks: pytest ✅ ruff ✅ mypy ✅
+- [x] **Mergeado en main** (autorización del usuario, 2026-09-24): #12 → `176137b` · #13 → `339b750` (rebase slice) · #14 → `c81bc2b` (rebase) · #15 → `c088da2` (rebase) — CI verde en cada uno y en main post-merge (`36073114962` success); ramas locales/remotas limpias.
+- Checks: pytest ✅ ruff ✅ mypy ✅ CI ✅
 
 ## Progreso
 - T1 ✅ (d902e96): SMTP settings + validación channels; 24 tests nuevos.
@@ -78,8 +79,8 @@ El Mes 3 crea entregas pendientes pero nadie las envía: el loop de alertas no a
 - T5: suite completa en verde; ruff 0; mypy 0 feature.
 
 ## Siguiente paso
-- Merge del stack en orden #12 → #13 → #14 → #15 (decisión/política del usuario; mismo flujo stacked-to-main del Mes 3).
-- Post-merge: UI web de alertas (feature separado).
+- ✅ Merge del stack completado: #12→#13→#14→#15 en main, CI verde, ramas limpias (2026-09-24).
+- Próximo feature: **UI web de alertas** (sección reglas + listado/ack/resolve sobre la API existente; dashboard SSR web/ tiene una sola página `page.tsx`).
 
 ## Routing
 - Cada tarea: **delegated direct** (writer `general`), 2+ archivos por tarea; mapping ya hecho por el orquestador.

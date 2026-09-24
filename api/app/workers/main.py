@@ -19,6 +19,7 @@ from app.core.logging import get_logger, setup_logging
 from app.db.session import get_db_session_without_tenant
 from app.models.metric_rollup import RollupPeriod
 from app.workers.alerts import evaluate_alerts
+from app.workers.delivery_runner import DeliveryRunSummary, deliver_alerts
 from app.workers.rollups import compute_rollups
 
 setup_logging()
@@ -75,6 +76,12 @@ async def evaluate_alerts_row(ctx: dict[str, Any]) -> int:
         return await evaluate_alerts(session)
 
 
+async def deliver_alerts_row(ctx: dict[str, Any]) -> DeliveryRunSummary:
+    """Procesa entregas pendientes sobre TODOS los tenants (sin contexto tenant)."""
+    async with get_db_session_without_tenant() as session:
+        return await deliver_alerts(session)
+
+
 class WorkerSettings(WorkerSettingsBase):
     """Configuración de workers arq (convención: atributos → kwargs de Worker)."""
 
@@ -85,6 +92,7 @@ class WorkerSettings(WorkerSettingsBase):
         func(rollup_hour_1),
         func(rollup_day_1),
         func(evaluate_alerts_row),
+        func(deliver_alerts_row),
     ]
     cron_jobs: list[CronJob] = [
         cron(rollup_min_1, name="rollup-1m", run_at_startup=False, unique=True),
@@ -92,6 +100,7 @@ class WorkerSettings(WorkerSettingsBase):
         cron(rollup_hour_1, name="rollup-1h", minute=0, second=0, run_at_startup=False, unique=True),
         cron(rollup_day_1, name="rollup-1d", hour=0, minute=0, second=0, run_at_startup=False, unique=True),
         cron(evaluate_alerts_row, name="alert-eval-1m", run_at_startup=False, unique=True),
+        cron(deliver_alerts_row, name="alert-delivery-1m", run_at_startup=False, unique=True),
     ]
     on_startup: StartupShutdown | None = on_startup
     on_shutdown: StartupShutdown | None = on_shutdown

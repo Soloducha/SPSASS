@@ -103,6 +103,21 @@ class Settings(BaseSettings):
     DEFAULT_PAGE_SIZE: int = Field(default=20, ge=1, le=100)
     MAX_PAGE_SIZE: int = Field(default=100, ge=1, le=1000)
 
+    # ──────────────────────────────────────────────
+    # SMTP (Email delivery)
+    # ──────────────────────────────────────────────
+    SMTP_HOST: str = Field(default="", description="SMTP server host")
+    SMTP_PORT: int = Field(default=587, ge=1, le=65535, description="SMTP server port")
+    SMTP_USER: str = Field(default="", description="SMTP username")
+    SMTP_PASSWORD: str = Field(default="", description="SMTP password")
+    SMTP_FROM: str = Field(default="", description="From email address (empty = email delivery disabled)")
+    SMTP_STARTTLS: bool = Field(default=True, description="Use STARTTLS")
+
+    @property
+    def smtp_enabled(self) -> bool:
+        """True only when SMTP_HOST and SMTP_FROM are both configured."""
+        return bool(self.SMTP_HOST and self.SMTP_FROM)
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
 
 from app.models.alert import AlertOperator, AlertSeverity, AlertStatus, EntityType
 from app.models.metric import MetricType
@@ -62,6 +62,51 @@ class IngestResponse(BaseModel):
 
 
 # ──────────────────────────────────────────────
+# Channel validation models
+# ──────────────────────────────────────────────
+class WebhookChannel(BaseModel):
+    """Configuración del canal webhook."""
+
+    url: HttpUrl
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
+class EmailChannel(BaseModel):
+    """Configuración del canal email."""
+
+    to: Annotated[list[EmailStr], Field(min_length=1)]
+
+
+# Valid channel keys
+ALLOWED_CHANNEL_KEYS = frozenset({"webhook", "email"})
+
+
+def _validate_channels_dict(v: dict) -> dict:
+    """Valida la estructura del dict channels y retorna valores normalizados."""
+    if not isinstance(v, dict):
+        raise TypeError("channels must be a dict")
+
+    # Check for unknown keys
+    unknown_keys = set(v.keys()) - ALLOWED_CHANNEL_KEYS
+    if unknown_keys:
+        raise ValueError(f"Unknown channel keys: {sorted(unknown_keys)}. Allowed: {sorted(ALLOWED_CHANNEL_KEYS)}")
+
+    result = {}
+
+    # Validate and normalize webhook if present
+    if "webhook" in v:
+        webhook = WebhookChannel.model_validate(v["webhook"])
+        result["webhook"] = {"url": str(webhook.url), "headers": webhook.headers}
+
+    # Validate and normalize email if present
+    if "email" in v:
+        email = EmailChannel.model_validate(v["email"])
+        result["email"] = {"to": email.to}
+
+    return result
+
+
+# ──────────────────────────────────────────────
 # Alert Rule Schemas (T3)
 # ──────────────────────────────────────────────
 class AlertRuleCreate(BaseModel):
@@ -77,6 +122,14 @@ class AlertRuleCreate(BaseModel):
     channels: dict = Field(default_factory=dict)
     is_active: bool = True
 
+    @field_validator("channels", mode="before")
+    @classmethod
+    def validate_channels_create(cls, v: dict) -> dict:
+        validated = _validate_channels_dict(v)
+        if not validated:
+            raise ValueError("At least one channel (webhook or email) is required")
+        return validated
+
 
 class AlertRuleUpdate(BaseModel):
     """Request para actualizar una regla de alerta (campos opcionales)."""
@@ -90,6 +143,16 @@ class AlertRuleUpdate(BaseModel):
     severity: AlertSeverity | None = None
     channels: dict | None = None
     is_active: bool | None = None
+
+    @field_validator("channels", mode="before")
+    @classmethod
+    def validate_channels_update(cls, v: dict | None) -> dict | None:
+        if v is None:
+            return None
+        validated = _validate_channels_dict(v)
+        if not validated:
+            raise ValueError("At least one channel (webhook or email) is required")
+        return validated
 
 
 class AlertRuleResponse(BaseModel):

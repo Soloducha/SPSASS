@@ -1,4 +1,4 @@
-"""Esquemas Pydantic para API v1 (servidores e ingesta)."""
+"""Esquemas Pydantic para API v1 (servidores, ingesta, alertas)."""
 
 from datetime import datetime
 from typing import Annotated
@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.alert import AlertOperator, AlertSeverity, AlertStatus, EntityType
 from app.models.metric import MetricType
 
 
@@ -58,3 +59,107 @@ class IngestResponse(BaseModel):
     received: int
     inserted: int
     server_id: UUID
+
+
+# ──────────────────────────────────────────────
+# Alert Rule Schemas (T3)
+# ──────────────────────────────────────────────
+class AlertRuleCreate(BaseModel):
+    """Request para crear una regla de alerta."""
+
+    entity_type: EntityType
+    entity_id: UUID | None = None
+    metric: str = Field(min_length=1, max_length=100)
+    operator: AlertOperator
+    threshold: float
+    duration_s: int = Field(default=60, ge=1)
+    severity: AlertSeverity = AlertSeverity.WARNING
+    channels: dict = Field(default_factory=dict)
+    is_active: bool = True
+
+
+class AlertRuleUpdate(BaseModel):
+    """Request para actualizar una regla de alerta (campos opcionales)."""
+
+    entity_type: EntityType | None = None
+    entity_id: UUID | None = None
+    metric: str | None = Field(default=None, min_length=1, max_length=100)
+    operator: AlertOperator | None = None
+    threshold: float | None = None
+    duration_s: int | None = Field(default=None, ge=1)
+    severity: AlertSeverity | None = None
+    channels: dict | None = None
+    is_active: bool | None = None
+
+
+class AlertRuleResponse(BaseModel):
+    """Response de regla de alerta."""
+
+    id: UUID
+    tenant_id: UUID
+    entity_type: EntityType
+    entity_id: UUID | None
+    metric: str
+    operator: AlertOperator
+    threshold: float
+    duration_s: int
+    severity: AlertSeverity
+    channels: dict
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ──────────────────────────────────────────────
+# Alert Schemas (T4)
+# ──────────────────────────────────────────────
+class AlertResponse(BaseModel):
+    """Response de alerta."""
+
+    id: UUID
+    tenant_id: UUID
+    rule_id: UUID
+    server_id: UUID | None
+    severity: AlertSeverity
+    status: AlertStatus
+    message: str
+    triggered_at: datetime
+    resolved_at: datetime | None
+    acknowledged_at: datetime | None
+    acknowledged_by: UUID | None
+    value_at_trigger: float
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AlertAckRequest(BaseModel):
+    """Request para acknowledge de alerta."""
+
+    acknowledged_by: UUID
+
+
+class AlertAckResponse(BaseModel):
+    """Response de acknowledge/resolve de alerta."""
+
+    id: UUID
+    status: AlertStatus
+    acknowledged_at: datetime | None
+    resolved_at: datetime | None
+    acknowledged_by: UUID | None
+
+
+# ──────────────────────────────────────────────
+# Alert Query Schemas
+# ──────────────────────────────────────────────
+class AlertListParams(BaseModel):
+    """Parámetros de consulta para listar alertas."""
+
+    status: AlertStatus | None = None
+    severity: AlertSeverity | None = None
+    rule_id: UUID | None = None
+    limit: int = Field(default=100, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)

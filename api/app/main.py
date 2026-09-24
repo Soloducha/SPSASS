@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api import auth_router, dashboard_router, ingest_router, servers_router
+from app.api import alerts_router, auth_router, dashboard_router, ingest_router, servers_router
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
 from app.core.tenant.middleware import RequestResponseEndpoint, TenantMiddleware
@@ -158,6 +158,7 @@ app.include_router(auth_router)
 app.include_router(servers_router)
 app.include_router(ingest_router)
 app.include_router(dashboard_router)
+app.include_router(alerts_router)
 
 
 if __name__ == "__main__":

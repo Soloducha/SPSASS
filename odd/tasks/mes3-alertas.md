@@ -87,13 +87,17 @@ motor que las use.
 - **Estrategia**: ask-on-risk (default).
 - **Forecast**: ~600-800 líneas (motor ~150, API ~250, tests ~250) → supera 400 → chained PRs.
 - **Chain strategy**: stacked-to-main (elegida por el usuario 2026-09-24). Cada PR mergea a main en orden.
-- **Conteo real (work-unit commits)**: 2631261 engine+cron = 243 líneas; ab60dbf API slice = 392 líneas. Total ~635 sin tests. Con T5 (~250) ≈ 890 → 2-3 PRs en stack.
+- **Conteo real (work-unit commits)**: 2631261 engine+cron = 243 líneas; ab60dbf API slice = 392 líneas; 927c135 tests = 999 líneas. Total ~1.634 líneas → **3 PRs stacked-to-main** sugeridos: (A) engine+cron, (B) API slice, (C) tests.
 
 ## Follow-ups del verificador independiente (T3/T4, no bloqueantes)
 
 1. `repositories/alert.py:53` — `count_filtered` usa `where(Alert.tenant_id==...)` explícito en vez de `self._base_select()` (funcional; inconsistente con patrón base).
 2. `schemas.py:99` — `AlertAckRequest.acknowledged_by: UUID` acepta cualquier UUID sin validar pertenencia al tenant (posible intención: service accounts).
 3. `schemas.py:117` — `AlertListParams.offset` fuera de spec original (paginación estándar, sigue patrón existente).
+
+## Nota T5 (2026-09-24)
+
+El writer de T5 reportó `partial` atribuyendo 5 fallos a un "bug pre-existente en el parseo de `AlertListParams.rule_id`". Investigación del orquestador: diagnóstico INCORRECTO — el error real era `'str' object has no attribute 'hex'`: el helper `_setup_alert_via_engine` pasaba `rule_id` (str del JSON de la API) a una columna UUID de SQLite. Fix: `UUID(rule_id)` en la query del helper (1 línea + import). Los 18 tests pasan; suite total 68 passed.
 
 ## Progreso
 
@@ -104,7 +108,7 @@ motor que las use.
 | T2   | ✅ hecho | `main.py`: wrapper `evaluate_alerts_row` + `func` + cron `alert-eval-1m`; mypy/ruff 0 |
 | T3   | ✅ hecho | `api/v1/alerts.py` (CRUD /rules), `repositories/alert.py`, schemas, router registrado; verificado independiente PASS; 3 follow-ups menores (ver abajo) |
 | T4   | ✅ hecho | GET /alerts con filtros, POST /{id}/ack y /{id}/resolve; verificado independiente PASS |
-| T5   | pendiente | |
+| T5   | ✅ hecho | `api/tests/test_alerts.py`: 18 tests (disparo sostenido, no-dedup, resolución, CRUD, ack/resolve, aislamiento tenant). Suite total 68 passed/1 skipped/1 xfail/2 xpass; ruff 0; mypy test file 0 |
 
 ## Criterios de aceptación
 

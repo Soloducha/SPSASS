@@ -87,6 +87,13 @@ motor que las use.
 - **Estrategia**: ask-on-risk (default).
 - **Forecast**: ~600-800 líneas (motor ~150, API ~250, tests ~250) → supera 400 → chained PRs.
 - **Chain strategy**: stacked-to-main (elegida por el usuario 2026-09-24). Cada PR mergea a main en orden.
+- **Conteo real (work-unit commits)**: 2631261 engine+cron = 243 líneas; ab60dbf API slice = 392 líneas. Total ~635 sin tests. Con T5 (~250) ≈ 890 → 2-3 PRs en stack.
+
+## Follow-ups del verificador independiente (T3/T4, no bloqueantes)
+
+1. `repositories/alert.py:53` — `count_filtered` usa `where(Alert.tenant_id==...)` explícito en vez de `self._base_select()` (funcional; inconsistente con patrón base).
+2. `schemas.py:99` — `AlertAckRequest.acknowledged_by: UUID` acepta cualquier UUID sin validar pertenencia al tenant (posible intención: service accounts).
+3. `schemas.py:117` — `AlertListParams.offset` fuera de spec original (paginación estándar, sigue patrón existente).
 
 ## Progreso
 
@@ -95,8 +102,8 @@ motor que las use.
 |------|--------|-----------|
 | T1   | ✅ hecho | `alerts.py`: motor `evaluate_alerts` + `_EvalContext`/`_evaluate_rule_for_server`; mypy/ruff 0 en `app/workers/`; pytest 50 passed/1 skipped/1 xfail/2 xpass |
 | T2   | ✅ hecho | `main.py`: wrapper `evaluate_alerts_row` + `func` + cron `alert-eval-1m`; mypy/ruff 0 |
-| T3   | pendiente | |
-| T4   | pendiente | |
+| T3   | ✅ hecho | `api/v1/alerts.py` (CRUD /rules), `repositories/alert.py`, schemas, router registrado; verificado independiente PASS; 3 follow-ups menores (ver abajo) |
+| T4   | ✅ hecho | GET /alerts con filtros, POST /{id}/ack y /{id}/resolve; verificado independiente PASS |
 | T5   | pendiente | |
 
 ## Criterios de aceptación

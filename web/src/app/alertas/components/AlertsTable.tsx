@@ -6,6 +6,7 @@
  */
 
 import { useState, FormEvent, ChangeEvent } from 'react';
+import { AlertActions } from './AlertActions';
 import type { AlertResponse, AlertStatus, AlertSeverity } from '@/lib/api/alerts';
 
 interface AlertsTableProps {
@@ -234,6 +235,7 @@ export function AlertsTable({
                 <th className="px-4 py-3" scope="col">Mensaje</th>
                 <th className="px-4 py-3" scope="col">Disparada</th>
                 <th className="px-4 py-3" scope="col">Valor</th>
+                <th className="px-4 py-3" scope="col">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -276,9 +278,7 @@ export function AlertsTable({
                     {alert.value_at_trigger.toFixed(2)}
                   </td>
                   <td className="px-4 py-3">
-                    {alert.status === 'resolved' && (
-                      <span className="text-xs text-gray-400">Resuelta</span>
-                    )}
+                    <AlertActions alert={alert} />
                   </td>
                 </tr>
               ))}

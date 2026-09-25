@@ -1,4 +1,4 @@
-/** Server-only typed fetch wrappers for `/api/v1/alerts` endpoints (read-only for T1). */
+/** Server-only typed fetch wrappers for `/api/v1/alerts` endpoints. */
 
 import { getDashboardToken, getSpsaasApiUrl } from '@/lib/config';
 
@@ -28,6 +28,14 @@ export interface AlertListParams {
   rule_id?: string;
   offset?: number;
   limit?: number;
+}
+
+export interface AlertAckResponse {
+  id: string;
+  status: AlertStatus;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  acknowledged_by: string | null;
 }
 
 function buildAlertsUrl(path: string, params?: URLSearchParams): string {
@@ -105,5 +113,36 @@ export async function listAlerts(params: AlertListParams = {}): Promise<{
   const alerts = result.data ?? [];
   const hasNext = alerts.length === Number(searchParams.get('limit'));
   return { alerts, hasNext, error: null };
+}
+
+/**
+ * Reconoce (acknowledge) una alerta.
+ * El backend deriva el actor del usuario autenticado (JWT sub) e ignora cualquier valor en el body.
+ * Se envía un body JSON vacío válido porque el endpoint requiere AlertAckRequest.
+ */
+export async function acknowledgeAlert(alertId: string): Promise<{
+  data: AlertAckResponse | null;
+  error: string | null;
+}> {
+  const url = buildAlertsUrl(`/${alertId}/ack`);
+  // Body vacío válido: AlertAckRequest.acknowledged_by es opcional y deprecated
+  return fetchWithAuth<AlertAckResponse>(url, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+/**
+ * Resuelve una alerta.
+ * Sin body.
+ */
+export async function resolveAlert(alertId: string): Promise<{
+  data: AlertAckResponse | null;
+  error: string | null;
+}> {
+  const url = buildAlertsUrl(`/${alertId}/resolve`);
+  return fetchWithAuth<AlertAckResponse>(url, {
+    method: 'POST',
+  });
 }
 

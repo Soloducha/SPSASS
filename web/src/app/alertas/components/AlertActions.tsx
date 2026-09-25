@@ -4,26 +4,31 @@
  * Componente de acciones por fila de alerta (Reconocer / Resolver).
  * Un solo <form> por fila con dos botones submit distinguidos por name="intent".
  * useFormStatus deshabilita ambos durante el envío y previene doble envío.
+ * El estado de pending intent se trackea localmente para mostrar "Procesando…"
+ * solo en el botón que fue enviado.
  */
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
-import {
-  acknowledgeAlertAction,
-  resolveAlertAction,
-} from '../actions';
+import { useState, useEffect } from 'react';
+import { alertAction } from '../actions';
 import type { AlertResponse, AlertStatus } from '@/lib/api/alerts';
 
 interface AlertActionsProps {
   alert: AlertResponse;
 }
 
-function SubmitButtons({ alert, intent }: { alert: AlertResponse; intent: 'ack' | 'resolve' }) {
+function SubmitButtons({
+  alert,
+  intent,
+  pendingIntent,
+}: { alert: AlertResponse; intent: 'ack' | 'resolve'; pendingIntent: 'ack' | 'resolve' | null }) {
   const { pending } = useFormStatus();
 
   const isAck = intent === 'ack';
   const label = isAck ? 'Reconocer' : 'Resolver';
   const ariaBusy = pending ? 'true' : 'false';
+  const isThisButtonPending = pending && pendingIntent === intent;
 
   // Reconocer solo si status === 'open'
   // Resolver solo si status !== 'resolved'
@@ -46,39 +51,47 @@ function SubmitButtons({ alert, intent }: { alert: AlertResponse; intent: 'ack' 
           : 'bg-emerald-600 text-white hover:bg-emerald-700'
       }`}
     >
-      {pending ? 'Procesando…' : label}
+      {isThisButtonPending ? 'Procesando…' : label}
     </button>
   );
 }
 
 function AlertActionsForm({ alert }: { alert: AlertResponse }) {
-  const [state, formAction] = useActionState(
-    async (_prev: { status: 'success' | 'error'; message: string }, formData: FormData) => {
-      const intent = formData.get('intent') as 'ack' | 'resolve';
-      if (intent === 'ack') {
-        return acknowledgeAlertAction({ status: 'error', message: '' }, formData);
-      }
-      return resolveAlertAction({ status: 'error', message: '' }, formData);
-    },
-    { status: 'error', message: '' }
-  );
+  const [state, formAction] = useActionState(alertAction, { status: 'error', message: '' });
+  const [pendingIntent, setPendingIntent] = useState<'ack' | 'resolve' | null>(null);
+
+  const handleFormSubmit = (formData: FormData) => {
+    // The actual submission is handled by useActionState via formAction
+    // We just track which intent was submitted
+    const intent = formData.get('intent') as 'ack' | 'resolve';
+    if (intent) {
+      setPendingIntent(intent);
+    }
+  };
+
+  // Reset pendingIntent when the action completes (state changes)
+  useEffect(() => {
+    if (!state.status || state.status === 'success' || state.status === 'error') {
+      // Small delay to let the UI update before clearing
+      const timer = setTimeout(() => setPendingIntent(null), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [state.status, state.message]);
 
   return (
-    <form action={formAction} className="flex items-center gap-2">
+    <form action={formAction} onSubmit={handleFormSubmit} className="flex items-center gap-2">
       <input type="hidden" name="alertId" value={alert.id} />
-      <SubmitButtons alert={alert} intent="ack" />
-      <SubmitButtons alert={alert} intent="resolve" />
-      {state.message && (
-        <div
-          className={`text-xs min-h-[20px] ${
-            state.status === 'success' ? 'text-emerald-700' : 'text-red-700'
-          }`}
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {state.message}
-        </div>
-      )}
+      <SubmitButtons alert={alert} intent="ack" pendingIntent={pendingIntent} />
+      <SubmitButtons alert={alert} intent="resolve" pendingIntent={pendingIntent} />
+      <div
+        className={`text-xs min-h-[20px] ${
+          state.status === 'success' ? 'text-emerald-700' : 'text-red-700'
+        }`}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {state.message}
+      </div>
     </form>
   );
 }

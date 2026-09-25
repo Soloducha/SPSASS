@@ -6,7 +6,8 @@
  */
 
 import { revalidatePath } from 'next/cache';
-import { acknowledgeAlert, resolveAlert } from '@/lib/api/alerts';
+import { acknowledgeAlert, resolveAlert, type FetchResult } from '@/lib/api/alerts';
+import { getDashboardToken } from '@/lib/config';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -28,7 +29,7 @@ function validateIntent(intent: string): intent is ActionIntent {
   return intent === 'ack' || intent === 'resolve';
 }
 
-function mapApiError(status: number, detail: string): string {
+function mapApiError(status: number | null, detail: string): string {
   if (status === 404) {
     return 'La alerta ya no existe o no pertenece a este tenant';
   }
@@ -48,8 +49,8 @@ async function performAlertAction(
     return { status: 'error', message: idError };
   }
 
-  // Get token (each action independently validates)
-  const token = process.env.SPSAAS_DASHBOARD_TOKEN;
+  // Get token via shared helper (each action independently validates)
+  const token = getDashboardToken();
   if (!token) {
     return {
       status: 'error',
@@ -58,9 +59,7 @@ async function performAlertAction(
   }
 
   try {
-    let result:
-      | { data: { status: string } | null; error: string | null }
-      | undefined;
+    let result: FetchResult<{ status: string } | null>;
 
     if (intent === 'ack') {
       result = await acknowledgeAlert(alertId);
@@ -69,10 +68,8 @@ async function performAlertAction(
     }
 
     if (result.error) {
-      // Try to extract HTTP status from error message
-      const statusMatch = result.error.match(/^HTTP (\d+)/);
-      const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-      const message = mapApiError(status, result.error);
+      // Use the HTTP status directly from the typed fetch result
+      const message = mapApiError(result.status, result.error);
       return { status: 'error', message };
     }
 
@@ -92,28 +89,10 @@ async function performAlertAction(
 }
 
 /**
- * Server Action para reconocer una alerta.
- * Se usa directamente desde el formulario en AlertActions.
+ * Server Action unificada para reconocer o resolver una alerta.
+ * Lee y valida `intent` y `alertId` desde formData del lado del servidor.
  */
-export async function acknowledgeAlertAction(
-  _prevState: ActionResult,
-  formData: FormData
-): Promise<ActionResult> {
-  const alertId = formData.get('alertId') as string;
-  const intent = formData.get('intent') as string;
-
-  if (!validateIntent(intent)) {
-    return { status: 'error', message: 'Acción no válida' };
-  }
-
-  return performAlertAction(alertId, intent);
-}
-
-/**
- * Server Action para resolver una alerta.
- * Se usa directamente desde el formulario en AlertActions.
- */
-export async function resolveAlertAction(
+export async function alertAction(
   _prevState: ActionResult,
   formData: FormData
 ): Promise<ActionResult> {

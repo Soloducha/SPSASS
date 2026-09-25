@@ -7,7 +7,7 @@
  * Responsive: tabla con scroll horizontal en desktop, tarjetas apiladas <768px.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toggleRuleEnabledAction, deleteAlertRuleAction } from '../actions';
@@ -67,7 +67,7 @@ function formatChannels(channels: AlertRuleResponse['channels']): string {
  * Accessible confirmation dialog component.
  * - Labelled, keyboard reachable, dismissible with Escape
  * - Focus moved into dialog on open, restored on close
- * - Background not silently interactive (inert via aria-modal)
+ * - Background made inert via native <dialog> + showModal() (top-layer + inert document)
  * - Full-screen on mobile
  */
 function ConfirmDialog({
@@ -91,17 +91,20 @@ function ConfirmDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
+  // Open/close the native dialog, guarded against double-open/close
   useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
     if (isOpen) {
-      dialogRef.current?.showModal();
-      // Focus the confirm button for keyboard users
-      setTimeout(() => {
-        const confirmBtn = dialogRef.current?.querySelector('[data-confirm]') as HTMLElement;
-        confirmBtn?.focus();
-      }, 0);
+      if (!dialog.open) {
+        dialog.showModal();
+      }
     } else {
-      dialogRef.current?.close();
-      // Restore focus to trigger button
+      if (dialog.open) {
+        dialog.close();
+      }
+      // Restore focus to trigger button after close
       triggerElement?.focus();
     }
 
@@ -116,6 +119,14 @@ function ConfirmDialog({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, triggerElement]);
+
+  // Focus the confirm button deterministically after the dialog is shown
+  useLayoutEffect(() => {
+    if (isOpen && dialogRef.current?.open) {
+      const confirmBtn = dialogRef.current.querySelector('[data-confirm]') as HTMLElement;
+      confirmBtn?.focus();
+    }
+  }, [isOpen]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
     // Only close if clicking directly on the backdrop, not the dialog content
@@ -265,16 +276,16 @@ export function RulesTable({
     }
   };
 
-  const openDeleteDialog = (rule: AlertRuleResponse, triggerRef: React.RefObject<HTMLButtonElement | null>) => {
+  const openDeleteDialog = useCallback((rule: AlertRuleResponse, triggerRef: React.RefObject<HTMLButtonElement | null>) => {
     setRuleToDelete(rule);
     setTriggerElement(triggerRef.current);
     setDeleteDialogOpen(true);
-  };
+  }, []);
 
-  const closeDeleteDialog = () => {
+  const closeDeleteDialog = useCallback(() => {
     setDeleteDialogOpen(false);
     setRuleToDelete(null);
-  };
+  }, []);
 
   const handleDeleteConfirm = async () => {
     if (!ruleToDelete) return;

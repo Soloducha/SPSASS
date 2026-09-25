@@ -8,6 +8,7 @@ import { notFound } from 'next/navigation';
 import { getAlertRule } from '@/lib/api/rules';
 import { getDashboardOverview } from '@/lib/api/dashboard';
 import { EditRuleForm } from './components/EditRuleForm';
+import { mapApiError } from '../../utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ interface EditarReglaPageProps {
 export default async function EditarReglaPage({ params }: EditarReglaPageProps) {
   const { id: ruleId } = await params;
 
-  const [{ data: rule, error: ruleError }, { data: overview, error: overviewError }] = await Promise.all([
+  const [{ data: rule, error: ruleError, status: ruleStatus }, { data: overview, error: overviewError, status: overviewStatus }] = await Promise.all([
     getAlertRule(ruleId),
     getDashboardOverview(),
   ]);
@@ -26,9 +27,12 @@ export default async function EditarReglaPage({ params }: EditarReglaPageProps) 
   const servers = overview?.servers ?? [];
 
   if (ruleError) {
-    if (ruleError.includes('404') || ruleError.toLowerCase().includes('no existe')) {
+    // 404 → notFound() using typed status, not string sniffing
+    if (ruleStatus === 404) {
       notFound();
     }
+    // Missing token (status === null with specific message) → neutral missing-token pattern
+    const isMissingToken = ruleStatus === null && ruleError.includes('Token de dashboard no configurado');
     return (
       <main className="mx-auto max-w-3xl px-4 py-10" id="editar-regla-main">
         <header className="mb-8">
@@ -46,7 +50,9 @@ export default async function EditarReglaPage({ params }: EditarReglaPageProps) 
           </h1>
         </header>
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
-          No se pudo cargar la regla: {ruleError}
+          {isMissingToken
+            ? 'Token de dashboard no configurado. Configure SPSAAS_DASHBOARD_TOKEN en el entorno del servidor.'
+            : `No se pudo cargar la regla: ${mapApiError(ruleStatus, ruleError)}`}
         </div>
       </main>
     );
@@ -78,7 +84,7 @@ export default async function EditarReglaPage({ params }: EditarReglaPageProps) 
 
       {overviewError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
-          No se pudo cargar la lista de servidores: {overviewError}
+          No se pudo cargar la lista de servidores: {mapApiError(overviewStatus, overviewError)}
         </div>
       ) : (
         <EditRuleForm rule={rule} servers={servers} />

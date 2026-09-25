@@ -17,6 +17,7 @@ import {
   type FetchResult,
 } from '@/lib/api/rules';
 import { getDashboardToken } from '@/lib/config';
+import { mapApiError } from './utils';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -158,19 +159,6 @@ function validateUpdateRuleData(data: AlertRuleUpdate): string | null {
     }
   }
   return null;
-}
-
-function mapApiError(status: number | null, detail: string): string {
-  if (status === 404) {
-    return 'La regla ya no existe o no pertenece a este tenant';
-  }
-  if (status === 401) {
-    return 'El token de API configurado es inválido o ha expirado';
-  }
-  if (status === 422) {
-    return `Datos inválidos: ${detail}`;
-  }
-  return detail;
 }
 
 async function validateToken(): Promise<string | null> {

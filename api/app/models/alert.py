@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -98,9 +98,15 @@ class Alert(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
         nullable=False,
     )
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    triggered_at: Mapped[datetime] = mapped_column(nullable=False)
-    resolved_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    acknowledged_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    triggered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     acknowledged_by: Mapped[UUID | None] = mapped_column(nullable=True)
     value_at_trigger: Mapped[float] = mapped_column(nullable=False)
 
@@ -125,7 +131,9 @@ class AlertDelivery(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     channel: Mapped[str] = mapped_column(String(50), nullable=False)  # telegram, whatsapp, email
     status: Mapped[str] = mapped_column(String(50), nullable=False)  # pending, sent, failed
     external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)  # message_id, etc.
-    delivered_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relaciones

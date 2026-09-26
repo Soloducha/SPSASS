@@ -219,17 +219,25 @@ Each task: 2+ files; mapping by orchestrator. The click-through fix was verified
 ### Forecast
 Estimated **~750–950 authored lines** across 5 tasks (components, actions, types, styles, docs). Exceeds 400-line review budget → chained PRs required. The ~400 threshold is a planning/delivery heuristic; honest count is higher.
 
-### Slice Boundaries (stacked-to-main — CONFIRMED 2026-09-25)
-| PR Slice | Tasks | Est. Lines | Base Branch | Notes |
-|----------|-------|------------|-------------|-------|
-| **#1** | T1 | **~594 actual** | `main` | Foundation. Over the 400 budget → needs an honest split (data access / page / table) or a recorded `size:exception` before any PR |
-| **#1b** | D1 API hardening | ~122 | `#1` | Security fix landed in the same branch; decide whether to keep it in slice #1 or cut it as its own PR |
-| **#2** | T2 | ~120–150 | `#1` | Actions: ack/resolve Server Actions + accessible feedback |
-| **#3** | T3 | **~1628 actual** | `#2` | Rules: list, create, server selector from overview, create form. **4× over budget** — needs an honest split before PR: data access (`lib/api/rules.ts` + `dashboard.ts`) / Server Actions / `page.tsx` + `RulesTable.tsx` / `nueva/*` |
-| **#4** | T1 fix + T4 + T5 | ~250–400 | `#3` | `589aab2` (URL-driven filters/pagination — arguably belongs in slice #1 since it repairs T1) plus edit form, a11y/responsive polish, SMTP docs |
-| **#5** | T1+T2 click-through fix | **~76 actual** | `#4` | UTC formatting, `isLoading` reset, filter navigation, submitter-derived intent, 422 error mapping, URL-derived filters. Small enough to stand alone and worth its own review, since it touches two slices' components |
+### Slice Boundaries (stacked-to-main — CONFIRMED 2026-09-25, re-measured 2026-09-26)
 
-**Delivery strategy**: `ask-on-risk` — confirmed with the user on 2026-09-25, who chose **`stacked-to-main`** when shown the over-budget branch (1674 authored lines). Chain strategy is now cached for the feature. Slice boundaries below hold T1's existing 845-line `ecb92ab` in slice #1; that oversized commit still needs either a local split or a recorded `size:exception` before slice #1 can open. No PR is authorized yet.
+Measured as real net diffs between adjacent commits, not estimates. **The 2026-09-25 estimates were materially wrong and are corrected here** — slice #4 was recorded as "~250–400" when it is actually 1.7× that.
+
+| PR Slice | Tasks | **Measured lines** | vs ~400 budget | Base Branch | Notes |
+|----------|-------|--------------------|----------------|-------------|-------|
+| **#1** | T1 | **594** | ⚠️ 1.5× over | `main` | Foundation: `lib/api/alerts.ts`, `alertas/page.tsx`, `AlertsTable.tsx`, layout nav. Natural seams exist (data access / page / table) |
+| **#1b** | D1 API hardening | **122** | ✅ | `#1` | Security fix landed in the same branch. Recommend cutting it as its own PR — it is an API audit-integrity change, not web scope |
+| **#2** | T2 | **266** | ✅ | `#1` | Actions: ack/resolve Server Actions + accessible feedback |
+| **#3** | T3 | **1.633** | ❌ **4× over** | `#2` | Rules: `lib/api/rules.ts` + `dashboard.ts`, Server Actions, `page.tsx` + `RulesTable.tsx`, `nueva/*`. Documented split already exists in the T3 checklist |
+| **#4** | T1 fix + T4 + T5 | **1.494** | ❌ **3.7× over** | `#3` | ⚠️ **Was mis-estimated as ~250–400.** Really `589aab2` (T1 fix) + T4 edit form + delete dialog + a11y/responsive + SMTP docs. Three unrelated concerns in one slice |
+| **#5** | timestamp fix | **298** | ✅ | `#4` | ⚠️ **Does not belong in this chain at all** — it is a P0 backend fix and must reach `main` independently and first |
+| **#6** | click-through fix | **469** (56 code + 393 doc) | ⚠️ boundary | `#5` | Code is well under budget; the count is inflated by this tracking document. Recommend the doc lands with slice #1 or on its own |
+
+**Total against `main`: 4.465 authored lines across 7 slices.** Three slices are materially over budget: #1 (1.5×), #3 (4×) and #4 (3.7×).
+
+**Critical constraint, verified 2026-09-26: the branch has never been pushed.** `feat/alert-web-ui` has no upstream, and the only remote branch is `origin/main`. Local history rewriting is therefore free right now — no force-push, no shared history, no broken reviewers. This is the cheapest moment a split will ever be, and it stops being free the moment the first PR opens.
+
+**Delivery strategy**: `ask-on-risk` — confirmed with the user on 2026-09-25, who chose **`stacked-to-main`** when shown the over-budget branch. Chain strategy is cached. Whether to split #1/#3/#4 or record a `size:exception` is the user's call and is still open. No PR is authorized.
 
 ## Progress / Evidence Placeholders
 

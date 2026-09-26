@@ -26,6 +26,7 @@ from app.workers.alerts import evaluate_alerts
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.type_api import TypeEngine
 
 
 # ──────────────────────────────────────────────
@@ -1003,3 +1004,27 @@ class TestAlertsAPI:
             headers={"Authorization": f"Bearer {token_a}"},
         )
         assert cross_resolve.status_code == 404
+
+
+# ──────────────────────────────────────────────
+# Regression: ORM column declaration (T2)
+# ──────────────────────────────────────────────
+def test_alert_timestamp_columns_are_timezone_aware() -> None:
+    """Assert the four alert timestamp columns declare DateTime(timezone=True).
+
+    SQLite ignores the flag, so runtime round-trip tests cannot catch the bug.
+    This assertion pins the ORM declaration itself.
+    """
+    alert_cols = Alert.__table__.c
+    delivery_cols = AlertDelivery.__table__.c
+
+    for col_name in ("triggered_at", "resolved_at", "acknowledged_at"):
+        col_type: TypeEngine = alert_cols[col_name].type
+        assert getattr(col_type, "timezone", False) is True, (
+            f"Alert.{col_name} must be DateTime(timezone=True)"
+        )
+
+    delivered_type: TypeEngine = delivery_cols["delivered_at"].type
+    assert getattr(delivered_type, "timezone", False) is True, (
+        "AlertDelivery.delivered_at must be DateTime(timezone=True)"
+    )

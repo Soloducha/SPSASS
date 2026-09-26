@@ -56,7 +56,7 @@ Aware `datetime.now(UTC)` values written into those ORM-typed columns then fail 
 - **T5**: one work-unit commit, local only.
 
 ### T4b is deferred, not skipped
-This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 files — the alerts UI lives only in `feat/alert-web-ui`, 11 unpushed commits). The `/alertas` SSR re-check is therefore **not runnable on this branch**. It is also not this task's responsibility: it verifies the *web* feature, not the backend fix. It becomes a follow-up on `feat/alert-web-ui` once this fix lands there, and it is what unblocks that feature's T2.
+This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 files — the alerts UI lives only in `feat/alert-web-ui`, 19 unpushed commits). The `/alertas` SSR re-check is therefore **not runnable on this branch**. It is also not this task's responsibility: it verifies the *web* feature, not the backend fix. It becomes a follow-up on `feat/alert-web-ui` once this fix lands there, and it is what unblocks that feature's T2.
 
 ## Out of Scope
 - **A new Alembic migration.** The database is already correct. Creating one would be wrong, not just unnecessary.
@@ -65,7 +65,7 @@ This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 f
 - A Postgres-backed test suite / compose test profile. Worth doing eventually, but it is infrastructure, not this bug.
 - Changing `AlertResponse` / `AlertAckResponse` schemas or delivery formatters — verified compatible.
 - Touching the `alert-web-ui` feature, its branch, or its stacked PR slices.
-- Push and PR creation — **not authorized**.
+- Push and PR creation were unauthorized while this work unit was local-only. The user authorized the P0 PR on 2026-09-26, and this branch is that PR. The web feature's own delivery stays out of scope here.
 
 ## Constraints
 | Constraint | Detail |
@@ -73,7 +73,7 @@ This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 f
 | Branch | New branch `fix/alert-timestamp-timezone-drift` off `main`, NOT on top of `feat/alert-web-ui`. This is a backend prerequisite, a different concern, and must not pollute the web feature's stacked slices. |
 | TDD | OFF. No test framework additions. The regression test in T2 is a type assertion, not a RED/GREEN cycle. |
 | RDD | Clone-local OFF. Do not start native review, do not change the mode. |
-| Commits | Local commit authorized as an ODD work unit. Conventional Commits, English, no AI attribution. Push/PR NOT authorized. |
+| Commits | Local commit authorized as an ODD work unit. Conventional Commits, English, no AI attribution. Push and the P0 PR against `main` authorized by the user on 2026-09-26. |
 | Test runner | No local venv, no global `ruff`/`mypy`/`pytest`, and the host Python is 3.14 (project targets 3.12). **All checks run in a `python:3.12` container** replicating `.github/workflows/ci.yml`. |
 | Artifacts | Code, tests, this doc and the commit message in English. |
 
@@ -161,6 +161,8 @@ Operational notes carried from 2026-09-25:
 
 Re-verified independently by the orchestrator (second container run, `--collect-only` included): 19 collected / 19 passed in `test_alerts.py`, 118 passed in the full suite.
 
+**Pre-push gate (2026-09-26).** Re-run in a detached worktree at `91e8633` — the exact tree being pushed, not the feature branch — with ruff, mypy and both pytest scopes: `All checks passed!`, `no issues found in 53 source files`, `19 passed`, `118 passed, 1 skipped, 1 xfailed, 2 xpassed`. The counts matching this table, not the feature branch's 21/120, is what confirms the right tree was tested; `feat/alert-web-ui` carries 2 additional `test_alerts.py` tests from the ack-actor hardening.
+
 **Baseline reconciliation:** root README records `117 passed, 1 skipped, 1 xfailed, 2 xpass` as preexisting. `117 + 1 new test = 118` — the suite is consistent and there is no regression. The "20/20 alerts" figure noted in the 2026-09-25 session was inaccurate; the real pre-change count was 18.
 
 **Repo hygiene:** no `*.egg-info`, `__pycache__`, `.pytest_cache`, `.mypy_cache` or `.ruff_cache` leaked. Only untracked files are the two `odd/tasks/*.md` feature docs, which are untracked by design.
@@ -230,6 +232,6 @@ Note the ack body contract: on this branch (off `main`, which lacks `fd84c7e`) t
 
 ## Next Steps
 1. **Merge or cherry-pick this work unit into `feat/alert-web-ui`**, then run T4b: re-check `/alertas` SSR with a real alert row and close that feature's T2.
-2. Decide the stacked PR slices for `alert-web-ui` — slice #1 (`ecb92ab`, 845 lines) and slice #3 (`9236c16`+`589aab2`, ~1628 lines) both exceed the ~400-line budget and need an honest split or a recorded `size:exception`.
-3. Push and PRs remain unauthorized.
+2. Open the `alert-web-ui` chain as stacked PRs after this one merges. Slice #1 is already split into three independently-green commits (`8de276a` typed API client 109 lines, `584c5c0` page+table 444, `0655e9c` app shell 42). Slices #3 and #4 carry a recorded `size:exception`; 444 on `584c5c0` is deliberately not reduced further because the only smaller seam breaks the page-to-table import.
+3. This branch pushes and opens as the P0 PR against `main`, which must land before the web chain.
 4. Worth considering separately: a Postgres-backed test profile. SQLite ignoring the timezone flag is why this defect could sit unnoticed behind a fully green suite.

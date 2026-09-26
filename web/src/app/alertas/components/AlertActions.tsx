@@ -64,9 +64,10 @@ function AlertActionsForm({ alert }: { alert: AlertResponse }) {
   const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
     // The actual submission is handled by useActionState via formAction
     // We just track which intent was submitted
-    const formData = new FormData(event.currentTarget);
-    const intent = formData.get('intent') as 'ack' | 'resolve';
-    if (intent) {
+    // Fix 4: Read intent from native submitter (FormData doesn't include the submit button)
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const intent = submitter?.value as 'ack' | 'resolve' | undefined;
+    if (intent === 'ack' || intent === 'resolve') {
       setPendingIntent(intent);
     }
   };
@@ -92,7 +93,7 @@ function AlertActionsForm({ alert }: { alert: AlertResponse }) {
         aria-live="polite"
         aria-atomic="true"
       >
-        {state.message}
+        {typeof state.message === 'string' ? state.message : ''}
       </div>
     </form>
   );

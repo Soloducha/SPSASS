@@ -5,7 +5,7 @@
  * Componente cliente que navega vía URL (Next.js App Router) para refrescar datos del servidor.
  */
 
-import { useState, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { AlertActions } from './AlertActions';
 import type { AlertResponse, AlertStatus, AlertSeverity } from '@/lib/api/alerts';
@@ -68,6 +68,25 @@ export function AlertsTable({
   // Use initialHasNext from props (server-rendered) — updated on each navigation
   const hasNext = initialHasNext;
 
+  // Fix 2: Reset isLoading when navigation settles (pathname or searchParams change)
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 0);
+    return () => clearTimeout(timer);
+  }, [pathname, searchParams]);
+
+  // Fix 6: Keep filters and offset in sync with the URL after mount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFilters({
+        status: searchParams.get('status') ?? '',
+        severity: searchParams.get('severity') ?? '',
+        rule_id: searchParams.get('rule_id') ?? '',
+      });
+      setOffset(Number(searchParams.get('offset') ?? 0));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [searchParams]);
+
   const buildUrl = (params: {
     status?: string;
     severity?: string;
@@ -87,30 +106,38 @@ export function AlertsTable({
     return `${pathname}?${newParams.toString()}`;
   };
 
-  const navigate = (targetOffset: number, resetOffset = false) => {
-    setIsLoading(true);
-    const finalOffset = resetOffset ? 0 : targetOffset;
-    if (resetOffset) setOffset(0);
-    else setOffset(finalOffset);
-    router.push(buildUrl({
-      status: filters.status || undefined,
-      severity: filters.severity || undefined,
-      rule_id: filters.rule_id || undefined,
+  const navigate = (targetOffset: number, opts?: { resetOffset?: boolean; filters?: typeof filters }) => {
+    const nextFilters = opts?.filters ?? filters;
+    const finalOffset = opts?.resetOffset ? 0 : targetOffset;
+    const nextUrl = buildUrl({
+      status: nextFilters.status || undefined,
+      severity: nextFilters.severity || undefined,
+      rule_id: nextFilters.rule_id || undefined,
       offset: finalOffset,
       limit,
-    }));
+    });
+    // Fix 2: Guard no-op navigation — if URL unchanged, don't latch isLoading and don't push
+    if (nextUrl === `${pathname}?${searchParams.toString()}`) {
+      return;
+    }
+    setIsLoading(true);
+    if (opts?.resetOffset) setOffset(0);
+    else setOffset(finalOffset);
+    router.push(nextUrl);
   };
 
   const handleFilterChange = (e: ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFilters((prev) => ({ ...prev, [name]: value }));
+    // Fix 3: Compute next filters synchronously and pass to navigate to avoid stale closure
+    const nextFilters = { ...filters, [name]: value };
+    setFilters(nextFilters);
     // Reset offset to 0 when filters change
-    navigate(0, true);
+    navigate(0, { resetOffset: true, filters: nextFilters });
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    navigate(0, true);
+    navigate(0, { resetOffset: true });
   };
 
   const handlePrev = () => {
@@ -133,6 +160,8 @@ export function AlertsTable({
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        timeZone: 'UTC',
+        hourCycle: 'h23',
       });
     } catch {
       return dateStr;
@@ -236,7 +265,7 @@ export function AlertsTable({
                 <th className="px-4 py-3" scope="col">Regla</th>
                 <th className="px-4 py-3" scope="col">Servidor</th>
                 <th className="px-4 py-3" scope="col">Mensaje</th>
-                <th className="px-4 py-3" scope="col">Disparada</th>
+                <th className="px-4 py-3" scope="col">Disparada (UTC)</th>
                 <th className="px-4 py-3" scope="col">Valor</th>
                 <th className="px-4 py-3" scope="col">Acciones</th>
               </tr>

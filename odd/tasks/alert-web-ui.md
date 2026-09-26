@@ -200,6 +200,11 @@ No test command required (TDD OFF). No web test framework exists. API tests only
 
 **These three are not sufficient on their own.** A green build proved nothing about T1: the filters and pagination were dead at runtime and every check still passed. Any UI wiring whose data path is not exercised against a live backend is **unverified** until clicked through.
 
+**Delete `web/.next` first.** A build against a warm `.next` reuses cached generated types and can report success on code that does not compile — which is exactly how three commits carried a false `pnpm build` ✅ for a week. Always:
+```powershell
+Remove-Item -Recurse -Force web/.next
+```
+
 This has now happened three times in this feature — T1's dead filters, T4's dialog crash, and six client-interaction defects in the 2026-09-26 click-through — with a fully green `lint` / `tsc` / `build` / test suite every time. Treat static checks as a floor, never as evidence of behaviour.
 
 ## Delegated-Direct Routing / Trigger Evidence
@@ -225,8 +230,10 @@ Measured as real net diffs between adjacent commits, not estimates. **The 2026-0
 
 | PR Slice | Tasks | **Measured lines** | vs ~400 budget | Base Branch | Notes |
 |----------|-------|--------------------|----------------|-------------|-------|
-| **#1** | T1 | **594** | ⚠️ 1.5× over | `main` | Foundation: `lib/api/alerts.ts`, `alertas/page.tsx`, `AlertsTable.tsx`, layout nav. Natural seams exist (data access / page / table) |
-| **#1b** | D1 API hardening | **122** | ✅ | `#1` | Security fix landed in the same branch. Recommend cutting it as its own PR — it is an API audit-integrity change, not web scope |
+| **#1a** | T1 data layer | **109** | ✅ | `main` | `lib/api/alerts.ts` — typed server-only fetch wrappers. Deliberately inert: nothing imports it yet |
+| **#1b** | T1 read-only UI | **444** | ⚠️ 1.11× | `#1a` | `alertas/page.tsx` + `AlertsTable.tsx` — the page and its table |
+| **#1c** | T1 app shell | **42** | ✅ | `#1b` | `layout.tsx` — header, nav, main, footer. Lands **last** so the `/alertas` route exists before anything links to it |
+| **#1b-alt** | *(not a slice)* D1 API hardening | **122** | ✅ | `#1` | Security fix in the same branch. Recommend cutting it as its own PR — it is an API audit-integrity change, not web scope |
 | **#2** | T2 | **266** | ✅ | `#1` | Actions: ack/resolve Server Actions + accessible feedback |
 | **#3** | T3 | **1.633** | ❌ **4× over** | `#2` | Rules: `lib/api/rules.ts` + `dashboard.ts`, Server Actions, `page.tsx` + `RulesTable.tsx`, `nueva/*`. Documented split already exists in the T3 checklist |
 | **#4** | T1 fix + T4 + T5 | **1.494** | ❌ **3.7× over** | `#3` | ⚠️ **Was mis-estimated as ~250–400.** Really `589aab2` (T1 fix) + T4 edit form + delete dialog + a11y/responsive + SMTP docs. Three unrelated concerns in one slice |
@@ -239,11 +246,51 @@ Measured as real net diffs between adjacent commits, not estimates. **The 2026-0
 
 **Delivery strategy**: `ask-on-risk` — confirmed with the user on 2026-09-25, who chose **`stacked-to-main`** when shown the over-budget branch. Chain strategy is cached. Whether to split #1/#3/#4 or record a `size:exception` is the user's call and is still open. No PR is authorized.
 
+## T1 evidence correction (2026-09-26) — three "build ✅" claims were FALSE
+
+While splitting slice #1 into reviewable commits, each intermediate commit was built from a cleared `.next`. `b8057e6` — the T1 tip whose evidence row claims `pnpm build` ✅ — **does not compile**:
+
+```
+src/app/alertas/page.tsx(114,11): error TS2322: Type 'AlertListParams' is not
+assignable to type '{ status?: ...; offset: number; limit: number; }'
+```
+
+**Root cause.** `AlertListParams` declares `offset?` / `limit?` as optional, because `listAlerts` defaults them. `AlertsTableProps` requires them, because the page always resolves them through `parseOffset` / `parseLimit`. The runtime was never wrong — only the type declaration was. Passing `initialParams` straight through was a type error from T1 onward.
+
+**Why nobody noticed.** The builds had been run against a **stale `web/.next`**, so `tsc` reused cached generated types and reported success. Clearing `.next` surfaces the real error immediately.
+
+**Why the branch tip is green anyway.** `9236c16` (T3) incidentally *removed* the `: AlertListParams` annotation from `const initialParams`, letting TypeScript infer a concrete object type with required `offset`/`limit`. That repaired the mismatch by accident, three commits later, with no one intending it.
+
+| Commit | Annotation | Builds clean? | Evidence row claimed |
+|---|---|---|---|
+| `b8057e6` T1 | `const initialParams: AlertListParams =` | ❌ | ✅ build |
+| `5c04948` T2 | `const initialParams: AlertListParams =` | ❌ | ✅ build |
+| `72dda44` T2 corrective | `const initialParams: AlertListParams =` | ❌ | ✅ build |
+| `9236c16` T3 | `const initialParams =` | ✅ | ✅ build |
+
+**Resolution.** Slice #1b passes `offset` and `limit` explicitly at the call site — `initialParams={{ ...initialParams, offset, limit }}` — which is also the honest statement of intent. The fix exists **only inside slice #1**, because that is where it is required for the slice to open with a green head. `589aab2` later rewrites that call site, so the final branch tree is byte-identical to the pre-split branch: `git diff backup/feat-alert-web-ui feat/alert-web-ui` is empty. The split is purely structural.
+
+**Standing rule, added to Exact Checks: delete `web/.next` before believing any build result on this project.**
+
+## Slice #1 split (2026-09-26) — done, verified green per commit
+
+| Commit | Lines | Builds | Lint |
+|---|---|---|---|
+| `8de276a` typed server-only alerts client | 109 | ✅ | ✅ 0/0 |
+| `584c5c0` read-only overview page + table | 444 | ✅ | ✅ 0/0 |
+| `0655e9c` app shell + navigation | 42 | ✅ | ✅ 0/0 |
+
+`444` is 1.11× the soft ~400 heuristic on #1b. It was not reduced further on purpose: the only smaller seam would separate the page from the table it renders, producing an intermediate commit whose import does not resolve. A broken intermediate is strictly worse than a slightly oversized commit, and the heuristic is explicitly not an acceptance criterion.
+
+**Rebase outcome.** 14 downstream commits replayed onto the new base. One conflict, in `alertas/page.tsx`, on exactly the line the fix touches. Resolved toward `589aab2`'s side — that commit legitimately deletes the dead `onFetch` prop and rewrites the call site, and the type error is already gone by then via `9236c16`. Final tree verified byte-identical to the pre-split backup. Branch tip: lint 0/0, build exit 0, 23 files, 4.473 insertions.
+
+Safety refs kept until the PRs open: tag `backup/pre-slice1-split`, branch `backup/feat-alert-web-ui`.
+
 ## Progress / Evidence Placeholders
 
 | Task | Status | Commit SHA | Checks | Notes |
 |------|--------|------------|--------|-------|
-| T1 | ✅ Done | **b8057e6** (corrects ecb92ab) | `pnpm lint` ✅ `pnpm exec tsc --noEmit` ✅ `pnpm build` ✅ | 594 authored lines (594 add, 1 del), 4 files. Original ecb92ab (845 lines, 5 files) contained T2/T3 scope removed by this correction: deleted `rules.ts`, removed `acknowledgeAlert`/`resolveAlert` and their types from `alerts.ts`, removed nonfunctional action buttons from `AlertsTable.tsx`, added `force-dynamic`, changed date locale to neutral `es`, replaced breadcrumb `<a>` with `Link`. Independent verifier: `pass-with-warnings`, no blockers/criticals after correction. Native assess on the correction: `medium`, `review_due: false`, `under_budget`. Parent spot check `pnpm lint` re-run by orchestrator: exit 0. |
+| T1 | ⚠️ **Done, build claim corrected** | **`8de276a` → `584c5c0` → `0655e9c`** (split from `b8057e6`) | `pnpm lint` ✅ `pnpm exec tsc --noEmit` ✅ `pnpm build` ✅ — **re-verified 2026-09-26 per commit with `web/.next` deleted** | 594 authored lines (594 add, 1 del), 4 files. Original ecb92ab (845 lines, 5 files) contained T2/T3 scope removed by this correction: deleted `rules.ts`, removed `acknowledgeAlert`/`resolveAlert` and their types from `alerts.ts`, removed nonfunctional action buttons from `AlertsTable.tsx`, added `force-dynamic`, changed date locale to neutral `es`, replaced breadcrumb `<a>` with `Link`. Independent verifier: `pass-with-warnings`, no blockers/criticals after correction. Native assess on the correction: `medium`, `review_due: false`, `under_budget`. Parent spot check `pnpm lint` re-run by orchestrator: exit 0. **⚠️ The original `pnpm build` ✅ in this row was FALSE — `b8057e6` does not compile. See "T1 evidence correction". Slice #1 is now three commits, each independently green.** |
 | **D1 Resolution (Option A)** | ✅ Done | **fd84c7e** | `python -m pytest tests/test_alerts.py` ✅ 20/20 passed<br>`python -m pytest tests/` ✅ 119 passed<br>`ruff check app tests` ✅<br>`mypy app` ✅ | API hardening: `acknowledged_by` from `user.id`, body field deprecated/ignored, 404 preserved, log reports authoritative actor, 2 new regression tests + updated existing tests |
 | T2 | ✅ Done | **5c04948** → **72dda44 (corrective)** | `pnpm lint` ✅ `pnpm exec tsc --noEmit` ✅ `pnpm build` ✅ | 259 authored lines (259 add, 4 del), 4 files. Added `AlertAckResponse` type, `acknowledgeAlert`/`resolveAlert` in `alerts.ts`; Server Actions `acknowledgeAlertAction`/`resolveAlertAction` in `actions.ts` (each validates token independently, UUID validation, intent validation, honest error mapping 404/401/other); `AlertActions` Client Component with single form per row, two submit buttons via `name="intent"`, `useFormStatus` for pending/disable, `aria-live` feedback, `min-h-[44px] min-w-[44px]` touch targets; `AlertsTable` adds actions column. Neutral/professional Spanish copy: "Reconocer", "Resolver", "Procesando…". **Corrective 72dda44 (-7 net lines, 3 files)**: (1) `FetchResult<T>` with typed `status: number | null` returned by `fetchWithAuth`/`acknowledgeAlert`/`resolveAlert` — eliminates regex parsing of error messages; `mapApiError` now branches on numeric status directly. (2) `actions.ts` uses `getDashboardToken()` helper (was direct `process.env` read). (3) Collapsed `acknowledgeAlertAction` + `resolveAlertAction` into single `alertAction` — server-side validates both `alertId` (UUID) and `intent` (`ack`|`resolve`); removed client-side intent dispatcher. (4) `AlertActions.tsx`: `aria-live` region always rendered (was conditional); per-button pending label via local `pendingIntent` state (was both buttons showing "Procesando…"). T1 behavior (filters, pagination, error/empty states) unchanged. |
 | T3 | ✅ Done | **9236c16** | `corepack.cmd pnpm lint` ✅ 0/0<br>`corepack.cmd pnpm exec tsc --noEmit` ✅<br>`corepack.cmd pnpm build` ✅ | 1628 authored insertions, 11 files. Rules list + create flow with server selector from dashboard overview. Independent verifier **confirmed all 11 backend contract claims** against the API source. Native assess: `medium`, `review_due: true`, `slice_budget_reached` (1633 lines vs the ~400 budget). Four findings carried into T4 (see T3 findings table). |
@@ -261,6 +308,7 @@ Measured as real net diffs between adjacent commits, not estimates. **The 2026-0
 | Accessibility regressions | Medium | Medium | Manual audit checklist in T4; no axe-core CI gate |
 | PR slice size creep | High | Medium | Monitor `git diff --stat` per task; stop at boundary |
 | No web test framework | High | Low | Document honestly; rely on type-check + build + manual verification |
+| **A stale `web/.next` makes `tsc` report false passes** | ~~High~~ **Closed** | High | **Realized 2026-09-26.** Cached generated types under `.next` were reused across builds, so three commits whose evidence tables claim `pnpm build` ✅ in fact did not compile. **Standing rule: `Remove-Item -Recurse -Force web/.next` before believing any build or type-check result on this project.** A green build against a warm `.next` is not evidence |
 | **Green build hid a completely dead feature** (T1 filters/pagination) | ~~High~~ **Closed** | High | **Realized 2026-09-25 and fixed in `589aab2`.** T1 shipped a UI wired to an empty stub callback; every check passed. Do not treat lint/tsc/build as evidence that a data path works — a change to UI data flow needs a click-through or a real test |
 | **Two more blockers hidden by the same green build** (T4 dialog crash, T4 status sniffing) | ~~High~~ **Closed** | High | **Realized 2026-09-25, fixed in `89e7568`.** `showModal()` on an open modal throws at runtime; 404 detection by `.includes('404')` on a raw backend detail misclassifies 422s. Neither is statically detectable. **Read the code for effect dependencies, native browser APIs, and any error classification** |
 | **Six further defects hidden by the same green build, found only by a real browser** (timezone/hydration, latched `isLoading`, dead filter, dead pending label, error-detail crash, stale URL state) | ~~High~~ **Closed** | High | **Realized 2026-09-26.** All three static checks, 120 API tests, `curl` and SSR-only inspection were green. Filtering was entirely non-functional and a failed action unmounted the whole page. This is the **third** occurrence of the same class, which makes it a structural property of this feature rather than bad luck. **Any client-side data path, effect cleanup, or error-value render must be exercised in a browser before it is called verified** |
@@ -382,9 +430,8 @@ The ack/resolve path works end-to-end. But exercising it surfaced **six client-i
 
 What remains is entirely the user's call, in this order:
 1. **Verify fix 4 in a live browser** — needs a new alert in `Abierta` or `Reconocida` state so the Reconocer/Resolver buttons can be clicked again. Everything else is done.
-2. **Decide the stacked-to-main slices.** Chain strategy is confirmed. Slice #1 (T1, whose history still contains the oversized `ecb92ab` at 845 lines) and slice #3 (T3, 1628 lines) both exceed the ~400-line budget and need an honest split or a recorded `size:exception` before their PRs can open.
-3. **Decide how the backend fix reaches `main`.** It is backend bugfix scope and must not stay buried inside this web feature. It exists standalone on `fix/alert-timestamp-timezone-drift` (`91e8633`).
-4. **Push / open PRs** — still unauthorized.
+2. **Push / open PRs** — still unauthorized. Slice #1 is now three independently-green commits (109 / 444 / 42). Slices #3 (1.633) and #4 (1.494) carry a recorded `size:exception` by user decision; each needs that exception noted in its PR body. Safety refs `backup/pre-slice1-split` and `backup/feat-alert-web-ui` exist and should be deleted once the PRs are open.
+3. **Land the timestamp fix independently and first.** It is a P0 backend fix — `main` currently cannot create an alert and `ack` returns 500 — and it must not wait behind a 4.473-line web chain. Standalone on `fix/alert-timestamp-timezone-drift` (`91e8633`), PR against `main`.
 
 Unverified and honest:
 - Fix 4 (submitter-derived intent) and fix 5 (422 error mapping) are verified by code review and the captured pre-fix crash evidence, not by a fresh browser reproduction. Both demo alerts are in `resolved` state, so no action buttons remain to click.

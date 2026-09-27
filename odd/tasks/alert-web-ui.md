@@ -478,8 +478,8 @@ This document previously attributed the residual 404 to the favicon. That attrib
 **T1, T2, T3, T4 and T5 are all DONE and verified against a running stack, the whole feature has been clicked through in a real browser, and fix 4 is now browser-verified against a freshly created alert.** Nothing is pushed and no PR exists.
 
 What remains is entirely the user's call, in this order:
-1. **Push / open PRs** — still unauthorized. Slice #1 is three independently-green commits (109 / 444 / 42). Slices #3 (1.633) and #4 (1.494) carry a recorded `size:exception` by user decision; each needs that exception noted in its PR body. Safety refs `backup/pre-slice1-split` and `backup/feat-alert-web-ui` exist and should be deleted once the PRs are open.
-2. **Land the timestamp fix independently and first.** It is a P0 backend fix — `main` currently cannot create an alert and `ack` returns 500 — and it must not wait behind a 4.473-line web chain. Standalone on `fix/alert-timestamp-timezone-drift` (`91e8633`), PR against `main`.
+1. **Push / open PRs** — still unauthorized. Slice #1 is three independently-green commits (109 / 444 / 42). Slices #3 (1.633) and #4 (1.494) carry a recorded `size:exception` by user decision; each needs that exception noted in its PR body. Safety refs `backup/feat-alert-web-ui` and `backup/alert-web-ui-pre-rebase` exist — the latter holds the pre-rebase tree, kept until the stacked PRs open — and should be deleted once the PRs are open.
+2. ~~**Land the timestamp fix independently and first.**~~ **Done — retract this step.** The P0 backend fix landed on `main` as PR #16 (merge `b1a2197`, commit `91e8633`). `main` can now create alerts and `ack`/`resolve` return 200, which is exactly what unblocked T2. It does not have to be sequenced ahead of this web chain any more, because it is already there.
 
 Unverified and honest:
 - Fix 5 (422 error mapping) is verified by code review and the captured pre-fix crash evidence, not by a fresh browser reproduction; forcing a 422 would mean deliberately breaking the API.

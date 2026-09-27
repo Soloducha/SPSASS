@@ -7,11 +7,21 @@
  * Responsive: tabla con scroll horizontal en desktop, tarjetas apiladas <768px.
  */
 
-import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toggleRuleEnabledAction, deleteAlertRuleAction } from '../actions';
 import type { AlertRuleResponse, EntityType, AlertOperator, AlertSeverity } from '@/lib/api/rules';
+
+// Elements that can hold keyboard focus inside the confirm dialog.
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 interface RulesTableProps {
   initialRules: AlertRuleResponse[];
@@ -91,7 +101,13 @@ function ConfirmDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  // Open/close the native dialog, guarded against double-open/close
+  // Open/close the native dialog, guarded against double-open/close.
+  //
+  // The <dialog> stays mounted for the whole component lifetime: only its open
+  // state changes. Unmounting it while this effect owns its lifecycle nulls the
+  // ref before the close path can run, so the `if (!dialog) return` guard
+  // skipped the focus restore and left keyboard users on <body> after
+  // dismissing the dialog.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -99,34 +115,69 @@ function ConfirmDialog({
     if (isOpen) {
       if (!dialog.open) {
         dialog.showModal();
+        // Focus the confirm button only after showModal(), so the element is in
+        // the top layer and actually focusable. A layout effect cannot do this:
+        // layout effects run before passive effects, so `dialog.open` is still
+        // false there and the focus call was silently a no-op.
+        const confirmBtn = dialog.querySelector('[data-confirm]') as HTMLElement | null;
+        confirmBtn?.focus();
       }
-    } else {
-      if (dialog.open) {
-        dialog.close();
-      }
-      // Restore focus to trigger button after close
+    } else if (dialog.open) {
+      dialog.close();
+      // Restore focus to the control that opened the dialog.
       triggerElement?.focus();
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
+      if (!isOpen || !dialog.open) return;
+
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
+        return;
       }
+
+      if (e.key !== 'Tab') return;
+
+      // Contain Tab inside the dialog. `showModal()` is supposed to inert the
+      // rest of the document, but that is observably NOT happening here: the
+      // dialog matches `:modal` while focus still walks out to <body> and on to
+      // page controls. This guard is therefore load-bearing, not belt-and-braces.
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (el) => (typeof el.checkVisibility === 'function' ? el.checkVisibility() : true),
+      );
+
+      // Both buttons are disabled while the request is in flight. Keep focus on
+      // the dialog rather than letting Tab escape to the page behind it.
+      if (focusable.length === 0) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      // Drive the whole traversal ourselves. Letting the browser apply its own
+      // sequential navigation here is unreliable: once a previous Tab moved
+      // focus programmatically, Chrome resolves the next Tab from a stale
+      // navigation origin and lands on <body>, which is exactly the escape we
+      // measured. Preventing the default every time removes that dependency.
+      e.preventDefault();
+
+      const active = document.activeElement;
+      const current = active instanceof HTMLElement ? focusable.indexOf(active) : -1;
+
+      const next =
+        current === -1
+          ? e.shiftKey
+            ? focusable.length - 1
+            : 0
+          : (current + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+
+      focusable[next].focus();
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, triggerElement]);
-
-  // Focus the confirm button deterministically after the dialog is shown
-  useLayoutEffect(() => {
-    if (isOpen && dialogRef.current?.open) {
-      const confirmBtn = dialogRef.current.querySelector('[data-confirm]') as HTMLElement;
-      confirmBtn?.focus();
-    }
-  }, [isOpen]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
     // Only close if clicking directly on the backdrop, not the dialog content
@@ -135,13 +186,14 @@ function ConfirmDialog({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
     <dialog
       ref={dialogRef}
       className="dialog-container"
       onClick={handleBackdropClick}
+      // Programmatic focus target only, so focus has somewhere to land while
+      // both buttons are disabled. Keeps it out of the natural tab order.
+      tabIndex={-1}
       aria-modal="true"
       aria-labelledby="dialog-title"
       aria-describedby="dialog-message"
@@ -181,6 +233,10 @@ function ConfirmDialog({
           padding: 0;
           max-width: 90vw;
           width: 400px;
+          /* The UA centers a modal <dialog> with margin:auto, but Tailwind's
+             preflight resets margin to 0 on every element and wins over it, so
+             the dialog rendered pinned to the top-left corner. Restore it. */
+          margin: auto;
         }
         .dialog-container::backdrop {
           background-color: rgb(0 0 0 / 0.5);
@@ -478,14 +534,18 @@ export function RulesTable({
     <section aria-labelledby="rules-table-heading">
       <div className="mb-4" role="status" aria-live="polite" aria-atomic="true">
         {actionFeedback && (
+          // Visual only. The persistent role="status" wrapper above is the live
+          // region: it stays in the DOM before the text changes, which is what
+          // lets assistive tech announce the update. Marking this node as a live
+          // region too nested two live regions around the same text (risk of a
+          // duplicate announcement), and role="alert" implies aria-live="assertive",
+          // which the explicit "polite" silently contradicted.
           <div
             className={`rounded-lg p-4 text-sm ${
               actionStatus === 'success'
                 ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
                 : 'border border-red-200 bg-red-50 text-red-700'
             }`}
-            role="alert"
-            aria-live="polite"
           >
             {actionFeedback}
           </div>

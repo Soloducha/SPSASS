@@ -68,7 +68,7 @@ export default async function AlertasPage({ searchParams }: AlertsPageProps) {
   });
 
   // Build the initial params for the client component
-  const initialParams: AlertListParams = {
+  const initialParams = {
     status,
     severity,
     rule_id,

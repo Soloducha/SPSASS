@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 const navigation = [
   { name: 'Inicio', href: '/' },
   { name: 'Alertas', href: '/alertas' },
+  { name: 'Reglas', href: '/alertas/reglas' },
 ] as const;
 
 export default function RootLayout({

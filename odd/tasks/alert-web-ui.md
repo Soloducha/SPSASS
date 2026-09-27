@@ -180,14 +180,14 @@ The first pass documented `SMTP_PORT` as *"default 587; 465 for implicit TLS"*. 
 | AC1 | Alerts list loads with bounded pagination, filters (status, severity, rule_id) work, severity/status badges render correctly | ✅ **Real browser, 2026-09-26** — filters reach the URL, `limit=1` forces `hasNext` and both controls advance, 0 hydration errors |
 | AC2 | Acknowledge action: button shows pending, on success `aria-live` feedback appears, row updates to `acknowledged`. Actor comes from the authenticated user server-side — the web sends no `acknowledged_by` (D1 Option A) | ✅ **Real browser, 2026-09-26, against a freshly created alert** — `Abierta → Reconocida`, both buttons `disabled` + `aria-busy` in flight, `aria-live` announced, HTTP 200. The **per-button pending label is now directly observed**: only the clicked submitter shows "Procesando…", the sibling is disabled but keeps its own text. Reproduced on both fresh alerts (`6fcc0fb4`, `41b29f74`) |
 | AC3 | Resolve action: same flow, row updates to `resolved` | ✅ **Real browser** — `Reconocida → Resuelta`, HTTP 200, `aria-live` announced |
-| AC4 | Rules list loads, enable/disable toggles work, delete shows confirmation | Manual (static checks + API round trips) |
+| AC4 | Rules list loads, enable/disable toggles work, delete shows confirmation | ✅ **Real browser, 2026-09-27** — toggle flipped both ways and returned to its original state with the `aria-live` region announcing each change; delete confirmation opened, dismissed by Escape and by backdrop, and the dialog row action was mutated by the round trip. The confirmation dialog itself found and fixed five real defects (see "Accessibility round #2") |
 | AC5 | Create rule: form validates, server selector populated from dashboard overview, email/webhook channel config saved, requires ≥1 channel | Manual + backend check |
 | AC6 | Edit rule: pre-fills data, updates active/channel fields correctly | Manual (HTTP 200 + `PATCH`/`DELETE` round trips) |
 | AC7 | Spanish UI: all copy neutral/professional Spanish, no console errors | ✅ **Real browser** — 0 pageerrors, 0 hydration errors, 0 dev overlay |
-| AC8 | Accessibility: semantic HTML, labels, keyboard nav, visible focus, 44px targets, `aria-live` feedback, responsive scroll/cards, contrast-safe classes | Manual audit |
-| AC9 | Responsive: <768px tables→scroll/cards, forms stack, touch targets ≥44px | Manual resize + device toolbar |
+| AC8 | Accessibility: semantic HTML, labels, keyboard nav, visible focus, 44px targets, `aria-live` feedback, responsive scroll/cards, contrast-safe classes | ✅ **Real browser keyboard measurement, 2026-09-27** — Tab ×10 and Shift+Tab ×6 cycle `Cancelar ⇄ Eliminar` and never escape to `<body>` (`defaultPrevented` on 16/16 events); initial focus lands on `[data-confirm]`; focus is restored to the row trigger after both dismissal paths; a single persistent `role="status"` region announces each toggle. **No screen reader was run**, so spoken output is unverified. |
+| AC9 | Responsive: <768px tables→scroll/cards, forms stack, touch targets ≥44px | ✅ **Real browser, 2026-09-27** — dialog container and content measure `390×844` at a 390px viewport with `border-radius:0px`, and the keyboard trap and focus restore both hold on mobile. Desktop centering measured at `x:440, y:264` in a `1280×720` viewport after the Tailwind preflight fix. |
 | AC10 | SMTP docs verified in existing locations (`api/.env.example`, delivery README, root README if incomplete); production activation blocked recorded | File review |
-| AC11 | All checks pass: `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm build` from `web/` | CI/local run |
+| AC11 | All checks pass: `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm build` from `web/` | ✅ `corepack.cmd pnpm lint` 0 errors / 0 warnings, `corepack.cmd pnpm exec tsc --noEmit` clean, `corepack.cmd pnpm build` exit 0 from a **deleted `web/.next`**. These three remain a floor, never evidence of behaviour — see the standing rule below |
 
 ## Exact Checks
 Run from `web/` directory. **`pnpm.cmd`, not bare `pnpm`** (see Environment Note 1 — bare `pnpm` in PowerShell can resolve a `.PS1` shim and trigger the "Windows wants to run this script" prompt; `corepack.cmd pnpm` is a valid fallback):
@@ -206,6 +206,13 @@ Remove-Item -Recurse -Force web/.next
 ```
 
 This has now happened three times in this feature — T1's dead filters, T4's dialog crash, and six client-interaction defects in the 2026-09-26 click-through — with a fully green `lint` / `tsc` / `build` / test suite every time. Treat static checks as a floor, never as evidence of behaviour.
+
+**The same directory breaks the browser too, and that is the worse half.** `web` bind-mounts `./web:/app`, so a `pnpm build` leaves a production `.next` inside the directory the dev server reads. The dev server then serves the *built* bundle while the source on disk is something else — and a browser measures code that is not the code being edited. This surfaced on 2026-09-27 as three measurements of "the same" handler returning three different focus sequences, and it is the leading suspect for every confusing result in that round. Before recording any browser evidence here:
+
+```powershell
+Remove-Item -Recurse -Force web/.next
+docker compose restart web
+```
 
 ## Delegated-Direct Routing / Trigger Evidence
 | Task | Routing | Writer | Files Touched (est.) | Trigger |
@@ -298,10 +305,12 @@ Safety refs kept until the PRs open: tag `backup/pre-slice1-split`, branch `back
 | **T1+T2 click-through fix** | ✅ Done | **click-through fix commit** (`fix(web): correct client-reaction defects found in browser click-through`, +56/−20, 3 files) | `npm.cmd run lint` ✅ exit 0<br>`npm.cmd run build` ✅ exit 0, 5 dynamic routes<br>Real browser (Chrome) ✅ 0 hydration errors, 0 pageerrors, 0 dev overlay<br>**Fix 4 re-verified in browser 2026-09-26** | **Discovered 2026-09-26 by the first real-browser click-through of this feature** — six defects that lint, tsc, build, 120 API tests, curl and SSR inspection all passed clean. (1) `toLocaleString('es', …)` with no `timeZone` → hydration mismatch, true `13:46` UTC re-rendered as `10:46` local; fixed with `timeZone: 'UTC'` + `hourCycle: 'h23'` (the `es` locale renders midnight as `24:00` on some ICU builds) and a "Disparada (UTC)" header. (2) `setIsLoading(true)` never reset and `useEffect` was not imported → Filtrar latched to "Cargando…" and pagination permanently disabled. (3) `handleFilterChange` passed the stale `filters` closure to `navigate()` → the selected filter never reached the URL, i.e. the exact T1 defect was still there. (4) `new FormData(form)` excludes the submit button, so client-side `intent` was `null` → "Procesando…" was dead code. (5) `mapApiError` returned the raw API `detail` for any non-404/401 status; a 422 detail is a Pydantic *array*, so rendering it threw `throwOnInvalidObjectType` and unmounted the whole table. (6) `filters`/`offset` were initialised once from `initialParams` and never re-derived from the URL, contradicting their own comments. 56 insertions / 20 deletions across 3 files. **Corrected 2026-09-26:** fix 4 is now browser-verified against two freshly created alerts (`6fcc0fb4`, `41b29f74`) — only the clicked submitter shows "Procesando…" while the sibling is disabled but keeps its own text. Fix 5 remains code-review verified only, because forcing a 422 would mean deliberately breaking the API. |
 | T4 | ✅ Done | **T4 feature commit** (`feat(web): add alert rule editing and accessible delete confirmation`, +1245/−101, 4 files) → **T4 corrective commit** (`fix(web): guard dialog open call and use typed status in rule edit page`, +53/−31, 4 files) | `corepack.cmd pnpm lint` ✅ 0/0<br>`corepack.cmd pnpm exec tsc --noEmit` ✅<br>`corepack.cmd pnpm build` ✅ 5 routes | 1245 insertions / 101 deletions, then +53/−31 corrective. Edit form pre-filled with current channel config, `updateAlertRule` action, `entity_id` UUID guard added to create AND update, native `<dialog>` delete confirmation with focus management, stacked card layout <768px, severity chip contrast fixed to WCAG AA. **Two blockers found by orchestrator code reading** (dialog `showModal()` crash + 404-by-string-sniffing) — both invisible to all three checks. See the T4 defects section. |
 | T5 | ✅ Done | **T5 feature commit** (`docs: document SMTP configuration for alert email delivery`, +10/−1, 1 file) → **T5 corrective commit** (`docs: correct SMTP port comment to reflect STARTTLS-only support`, +1/−1, 1 file) | `corepack.cmd pnpm lint` ✅ 0/0<br>`corepack.cmd pnpm exec tsc --noEmit` ✅<br>`corepack.cmd pnpm build` ✅ 5 routes | All six SMTP variables were **missing** from `api/.env.example` and were added (+10/−1). Both READMEs verified already complete — no change. Production activation recorded as BLOCKED. T5 corrective commit (1 line) removed a misleading port comment that implied port 465 implicit TLS works, which this implementation cannot do. |
+| **T4 a11y round #2** | ✅ Done | **delete-dialog accessibility commit** (`fix(web): restore dialog focus, trap Tab, and centre the confirmation`, +80/−20, 1 file) + `web/src/app/favicon.ico` (new) | `corepack.cmd pnpm lint` ✅ 0/0<br>`corepack.cmd pnpm exec tsc --noEmit` ✅<br>`corepack.cmd pnpm build` ✅ (clean, `web/.next` deleted first)<br>Real browser (Chrome) ✅ 0 pageerrors, 0 failed requests | **Fourth** occurrence of "green static checks, broken behaviour", and the first time the delete dialog was ever exercised. **Five real defects found and fixed:** focus restore dead (the unmount nulled the ref), initial confirm focus never applied (`useLayoutEffect` ran before the ref attached), Tab escaping to `<body>`, the desktop dialog pinned at `x:0, y:0` (Tailwind v4 preflight `margin:0` beat the native `dialog:modal { margin: auto }`), and a duplicated nested live region. Also closed the token round-trip gap (a real 401 and a missing-token run, both correct), identified the residual 404 as the favicon and moved the user's `favicon.ico` to the App Router convention, and established that the 422 branch is unreachable through a normal browser. **A sixth finding, about the tooling itself:** `web/.next` left by a production build shadows the dev server inside the bind mount, so a browser can measure code that is not on disk. That cost hours and is now a standing rule. Full evidence in "Accessibility round #2 (2026-09-27)". |
 
 ## Risks
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
+| **A production `web/.next` makes the dev server serve code that is not on disk** | ~~High~~ **Closed** | High | **Realized 2026-09-27.** `web` bind-mounts `./web:/app`, so `pnpm build` writes a production `.next` into the directory the dev server reads. The dev server then serves the built bundle while the source is something else, and a browser measures the wrong handler. This cost hours: three measurements of "the same" code returned three different focus sequences. **Standing rule: delete `web/.next` and restart `web` in the same session before recording any browser evidence on this project.** This is a second, browser-facing dimension of the stale-`.next` risk below. |
 | Backend API drift (contract change) | Low | High | Pin API types from OpenAPI spec; integration test in T5 |
 | Token validation complexity | Medium | Medium | Reuse `config.ts` helpers; each action re-validates |
 | Spanish copy inconsistencies | Medium | Low | Single copy constants; review in T4 |
@@ -474,24 +483,88 @@ This document previously attributed the residual 404 to the favicon. That attrib
 - Both alerts stay `acknowledged` as durable evidence, with UTC `acknowledged_at`.
 - The worker is left **running**; it was crashed, so running is the correct state.
 
+## Accessibility round #2 (2026-09-27) — the delete dialog, exercised for the first time
+
+Every item this document previously listed as "never exercised" for the delete dialog was exercised. **Five real defects were found, four of them invisible to lint, `tsc`, `build` and the full 120-test API suite.** This is the **fourth** occurrence of the same structural failure class, not bad luck: the discipline in this feature has to be *exercise the path in a browser*, and static checks only ever prove the code parses.
+
+| # | Defect | Root cause | Why the static checks missed it |
+|---|--------|------------|----------------------------------|
+| 1 | Focus restore on Escape/backdrop **never ran** | The component did `if (!isOpen) return null`, so React unmounted the dialog subtree on close. The ref was already `null` when the `finally` block tried to restore focus. | Type-correct: `ref.current?.focus()` on a nullable ref is valid. No rule flags an early return that silently disables a cleanup path. |
+| 2 | Confirm button **never received initial focus** | `showModal()` and `.focus()` were in a `useLayoutEffect`, but the dialog is server-rendered with `showModal()` only after mount, so the ref was not yet attached. | A `useLayoutEffect` reading a ref looks more correct than a `useEffect`. The ordering bug is invisible to the type checker and to lint. |
+| 3 | **Tab escaped the dialog to `<body>`** | No explicit focus containment. Native modal inertness was not holding under the dev cache in use. | Nothing in a linter or a build can observe runtime tab order. |
+| 4 | Desktop dialog rendered at `x:0, y:0` | `web/src/app/globals.css` does `@import "tailwindcss"`, whose v4 preflight applies `margin:0` to every element. That overrode the native `dialog:modal { margin: auto }` from the UA stylesheet. | A CSS reset beating a UA default is a rendering-order fact. No static check models the cascade. |
+| 5 | The delete dialog announced its own feedback **twice** | Two nested live regions carried the same text: a persistent outer `role="status"` and an inner `role="alert" aria-live="polite"`. | Both regions are individually correct ARIA. Only a live DOM inspection shows the duplication. |
+
+**Fixes applied to `web/src/app/alertas/reglas/components/RulesTable.tsx`.** The dialog is always mounted (`showModal()` is idempotent while already open); `showModal()` and the `[data-confirm]` focus both run in `useEffect` after the ref attaches; a `FOCUSABLE_SELECTOR` constant enumerates visible focusables and an always-`preventDefault()` `keydown` handler wraps Tab and Shift+Tab manually; `tabIndex={-1}` on the dialog covers the all-disabled case. The redundant inner live region was removed, leaving one persistent `role="status" aria-live="polite" aria-atomic="true"`. The centering fix is in the inline `<style>` block: `margin:auto` restored on `.dialog-container`, kept at `margin:0` in the mobile media query.
+
+### Observed in a real browser (Chrome via `playwright-core`, harness outside the repo)
+
+| Check | Observed |
+|---|---|
+| Tab containment | `Tab` ×10 alternates `Cancelar ⇄ Eliminar`. Focus never reaches `<body>`. `defaultPrevented` observed on **16/16** Tab events. |
+| Shift+Tab containment | `Shift+Tab` ×6 cycles backwards, never reaches `<body>`. |
+| Focus restore | After **both** Escape and backdrop dismissal, focus lands on the row's `Eliminar` trigger button. |
+| Initial focus | `[data-confirm]` holds focus on open. |
+| Backdrop discrimination | Click **outside** the panel's `boundingBox` closes; click **inside** the content does not. |
+| Closed state | `open=false`, computed `display:none`, and the page is freely focusable again — the trap does not leak past dismissal. |
+| Mobile 390×844 | Container and content both `390×844`, `max-width:390px`, `border-radius:0px`, focus and trap correct. |
+| Centering (1280×720) | Dialog at `x:440`, `y:264`, `400×192` — centered. |
+| Reversible `aria-live` toggle | `Regla desactivada` then `Regla activada`; final toggle state restored to `["Desactivar regla","Activar regla"]`. |
+| Hygiene | 0 pageerrors, 0 hydration errors, 0 failed requests, no dev overlay. |
+
+**Honest limit on defect 3:** the verified containment is **keyboard** containment. A programmatic `.focus()` call on an element outside the dialog is not intercepted by a `keydown` handler; native modal inertness is what covers that path, and it was not separately re-measured after the guard landed. Only real keyboard traversal was claimed as evidence.
+
+### The measurement trap that cost this round hours
+
+Three consecutive measurements of "the same" code produced three different sequences. **Cause: `web/.next`.** The `web` service bind-mounts `./web:/app`, so a `pnpm build` leaves a production `.next` inside the directory the dev server uses. The dev server then serves the *built* bundle while the source on disk is something else entirely — the handler under test was not the handler in the file.
+
+This is a **new dimension of the standing `.next` rule already recorded under Exact Checks**. That rule covered a stale `.next` making `tsc` report false passes; this case is worse, because it makes a **browser** measure code that is not on disk. Any browser evidence gathered on this project is only evidence of what was actually served, so the served code must be confirmed first:
+
+```powershell
+Remove-Item -Recurse -Force web/.next   # clear any production build
+docker compose restart web               # then verify against the live source
+```
+
+**Standing rule, added 2026-09-27: never record a browser measurement on this project without having deleted `web/.next` and restarted `web` in the same session.** The T1 filters, the T4 dialog crash, the six click-through defects, and all five defects in this round were each found only by a real browser. None were found by a check.
+
+### The residual 404 is identified: the favicon
+
+The earlier correction in this document was right that the 404 was cosmetic and never reached application code, but it left the origin **unidentified**. It was the favicon: the only icon was the placeholder `web/src/app/icon.svg`, and no `favicon.ico` existed. The user's own `favicon.ico` was moved from the repository root to **`web/src/app/favicon.ico`** — the Next.js App Router convention, which serves it at `/favicon.ico` — and the placeholder `icon.svg` was deleted. `GET /favicon.ico` now returns `200 image/x-icon`, 32.038 bytes, and a plain load of `/alertas` reports no 4xx/5xx and no failed requests. **Correction to the correction: the favicon hypothesis was correct; it was only the earlier "does not reach application code" framing that made it look unsupported.**
+
+### Token round trips, now exercised
+
+The "no live 401 or missing-token round trip" gap is closed. Two distinct failure paths were driven through the UI:
+
+| Scenario | Observed |
+|---|---|
+| Expired dashboard token (real 401 from the API) | UI surfaces the honest Spanish error; no crash, no unmounted table. |
+| `SPSAAS_DASHBOARD_TOKEN` absent (temporary, backed up and restored) | `No se pudieron cargar las alertas: Token de dashboard no configurado (SPSAAS_DASHBOARD_TOKEN)`; 0 rows; 2 error boxes; **0 console errors**. |
+
+The override was restored byte-for-byte and `/alertas` returned to 200 with no leftover backups. Per the existing environment rule, the token itself was never printed or read into any transcript.
+
+### Why fix 5 (the 422 branch) is still not browser-reproducible
+
+This was investigated rather than merely deferred. `mapApiError` in `web/src/app/alertas/reglas/utils.ts` maps 422 to `` `Datos inválidos: ${detail}` ``, and the create and update actions in `web/src/app/alertas/reglas/actions.ts` validate **the same constraints the API enforces**: entity type, metric in range 1–100, allowed operators, finite threshold, positive integer duration, valid severity, at least one channel, and UUID-validated `entity_id`. A normal browser user therefore has no path to a 422 — the client rejects first. Exercising the branch would require adding a test framework (none exists in `web/`, and introducing one is out of scope) or deliberately breaking the API. The branch is defensive code for a condition the UI cannot produce, and it stays covered by code review plus the captured pre-fix crash evidence.
+
+---
+
 ## Next Step
-**T1, T2, T3, T4 and T5 are all DONE and verified against a running stack, the whole feature has been clicked through in a real browser, and fix 4 is now browser-verified against a freshly created alert.** Nothing is pushed and no PR exists.
+**T1, T2, T3, T4 and T5 are all DONE and verified against a running stack, the whole feature has been clicked through in a real browser, fix 4 is browser-verified against a freshly created alert, and the delete dialog is now exercised and fixed.** Nothing is pushed and no PR exists.
 
 What remains is entirely the user's call, in this order:
 1. **Push / open PRs** — still unauthorized. Slice #1 is three independently-green commits (109 / 444 / 42). Slices #3 (1.633) and #4 (1.494) carry a recorded `size:exception` by user decision; each needs that exception noted in its PR body. Safety refs `backup/feat-alert-web-ui` and `backup/alert-web-ui-pre-rebase` exist — the latter holds the pre-rebase tree, kept until the stacked PRs open — and should be deleted once the PRs are open.
 2. ~~**Land the timestamp fix independently and first.**~~ **Done — retract this step.** The P0 backend fix landed on `main` as PR #16 (merge `b1a2197`, commit `91e8633`). `main` can now create alerts and `ack`/`resolve` return 200, which is exactly what unblocked T2. It does not have to be sequenced ahead of this web chain any more, because it is already there.
 
-Unverified and honest:
-- Fix 5 (422 error mapping) is verified by code review and the captured pre-fix crash evidence, not by a fresh browser reproduction; forcing a 422 would mean deliberately breaking the API.
-- The residual console 404 is unidentified and provably does not reach application code.
-- No live 401 or missing-token round trip through the UI.
-- No screen-reader announcement of any `aria-live` region or of the delete dialog.
-- Focus restore, Escape dismissal, backdrop dismissal and the mobile full-screen dialog are type-correct and reasoned through, still never exercised.
+Unverified and honest, as of 2026-09-27:
+- Fix 5 (422 error mapping) is **not** browser-reproducible, and the reason is now understood rather than assumed: the client validates every constraint the API enforces, so no browser user can reach a 422 without a deliberate API break. Covered by code review plus the captured pre-fix crash evidence. See "Why fix 5 (the 422 branch) is still not browser-reproducible".
+- **Programmatic** focus containment outside the dialog is not separately measured; only keyboard Tab / Shift+Tab traversal is claimed as evidence. See the honest limit noted under defect 3.
+- No screen reader was run. `aria-live` announcements were verified at the DOM level only (one persistent `role="status"` region; observable text transitions on toggle), and dialog focus order was verified by measuring `document.activeElement`. Actual spoken output remains unverified.
 - SMTP delivery: never exercised, and blocked on credentials plus explicit remote authorization.
+- Push and PRs: still unauthorized; the branch is local-only.
 
 ---
 
 *ODD feature document — `odd/tasks/alert-web-ui.md`*
-*Repository: spsaas | Branch: feat/alert-web-ui (local, unpushed) | Created: 2026-09-25 | Updated: 2026-09-26*
+*Repository: spsaas | Branch: feat/alert-web-ui (local, unpushed) | Created: 2026-09-25 | Updated: 2026-09-27*
 *Commits (post-rebase, oldest first, subjects + measured sizes — SHAs deliberately not tracked because this branch will be rewritten by the upcoming stacked-PR slice split): `feat(web): add typed server-only client for the alerts API` (+109/−0, 1 file) → `feat(web): add read-only alerts overview page and table` (+444/−0, 2 files) → `feat(web): add app shell with header, navigation and footer` (+41/−1, 1 file) → `fix(api): derive alert acknowledgement actor from the authenticated user` (+109/−13, 3 files) → `feat(web): add alert acknowledge and resolve actions` (+259/−4, 4 files) → `fix(web): map alert action errors by HTTP status` (+68/−75, 3 files) → `feat(web): add alert rules list and create flow` (+1628/−5, 11 files) → `fix(web): make alert filters and pagination drive URL navigation` (+47/−54, 2 files) → `feat(web): add alert rule editing and accessible delete confirmation` (+1245/−101, 4 files) → `fix(web): guard dialog open call and use typed status in rule edit page` (+53/−31, 4 files) → `docs: document SMTP configuration for alert email delivery` (+10/−1, 1 file) → `docs: correct SMTP port comment to reflect STARTTLS-only support` (+1/−1, 1 file) → `docs: record the alert timestamp fix evidence and the T2 unblock` (+29/−8, 1 file) → `fix(web): correct client-reaction defects found in browser click-through` (+56/−20, 3 files) → `docs(odd): track the browser click-through and the six defects it found` (+393/−0, 1 file) → `docs(odd): correct the slice size table with measured diffs` (+19/−11, 1 file) → `docs(odd): record the slice #1 split and a false build claim it exposed` (+53/−6, 1 file) → `docs(odd): verify fix 4 against a fresh alert and retract four stale claims` (+62/−13, 1 file).*
-*State at handoff: **T1–T5 verified against a live stack; full UI clicked through in Chrome; all six click-through defects fixed; fix 4 now browser-verified against a freshly created alert (`6fcc0fb4`, `41b29f74`, both left `acknowledged`).** Suite green on the settled tree: 21 alerts tests, 120 full API suite, web lint 0/0, tsc 0, build 5 routes, 0 hydration/page errors. Chain strategy `stacked-to-main` confirmed. Nothing pushed. Next: decide the PR slices — the timestamp fix (`91e8633`) is already on `main` via PR #16 merge `b1a2197`.*
+*State at handoff: **T1–T5 verified against a live stack; full UI clicked through in Chrome; all six click-through defects fixed; fix 4 browser-verified against a freshly created alert (`6fcc0fb4`, `41b29f74`, both left `acknowledged`); delete dialog exercised and its five defects fixed.** Suite green on the settled tree: 21 alerts tests, 120 full API suite, web lint 0/0, tsc 0, clean build from a deleted `.next`, 0 hydration/page errors, 0 failed requests. Token round trips (real 401, missing token) both correct; favicon served as `200 image/x-icon`; 422 branch proven unreachable through the UI. Chain strategy `stacked-to-main` confirmed. Nothing pushed. Next: decide the PR slices — the timestamp fix (`91e8633`) is already on `main` via PR #16 merge `b1a2197`.*

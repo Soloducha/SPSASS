@@ -36,7 +36,13 @@ function mapApiError(status: number | null, detail: string): string {
   if (status === 401) {
     return 'El token de API configurado es inválido o ha expirado';
   }
-  return detail;
+  if (status === 422) {
+    return 'Datos de entrada inválidos para la acción solicitada';
+  }
+  if (typeof detail === 'string' && detail.trim().length > 0) {
+    return detail;
+  }
+  return status ? `Error del servidor (${status})` : 'Error inesperado al procesar la acción';
 }
 
 async function performAlertAction(

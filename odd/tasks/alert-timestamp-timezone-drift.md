@@ -171,7 +171,7 @@ Re-verified independently by the orchestrator (second container run, `--collect-
 - Docker Desktop is **per-user** at `C:\Users\Qchara\AppData\Local\Programs\DockerDesktop\`, not `C:\Program Files\Docker\`. Engine needs 60–90s after launch.
 - `docker-compose.override.yml` is gitignored but present on disk, so the demo JWT TTL and `SPSAAS_DASHBOARD_TOKEN` injection survive a branch switch.
 - Demo credentials from the 2026-09-25 session still on disk: `awui.apikey`, `awui.ruleid`, `awui.serverid`, `awui.token` under `C:\Users\Qchara\AppData\Local\Temp\opencode\`. The token is almost certainly expired (12h TTL) — re-login rather than debugging a 401.
-- `main` does NOT contain `fd84c7e` (the ack-actor hardening). On this branch the ack endpoint still derives the actor from the request body — read the actual handler before calling it.
+- `main` does NOT contain the D1 Option A actor-identity hardening commit (the `fix(api): derive alert acknowledgement actor from the authenticated user` commit, +109/−13, 3 files). On this branch the ack endpoint still derives the actor from the request body — read the actual handler before calling it.
 
 ## Decisions
 - 2026-09-26: user chose to include `AlertDelivery.delivered_at` in this fix rather than defer it — same defect, same root cause, same file; a partial fix would knowingly leave the delivery path broken.
@@ -213,7 +213,7 @@ Persisted state, all three carrying a `+00` offset:
  resolved  | 2026-09-26 13:25:00.342995+00 | 2026-09-26 13:25:29.278926+00 | 2026-09-26 13:25:36.192787+00
 ```
 
-Note the ack body contract: on this branch (off `main`, which lacks `fd84c7e`) the handler still takes `acknowledged_by` from the request body.
+Note the ack body contract: on this branch (off `main`, which lacks the D1 Option A actor-identity hardening commit) the handler still takes `acknowledged_by` from the request body.
 
 **Step 4 — `delivered_at` proven.** The first delivery attempt used an unreachable dummy URL and failed, so `delivered_at` stayed NULL — a failed delivery never exercises the write. The rule's webhook channel was repointed at a reachable receiver, a new alert was triggered, and the delivery succeeded:
 ```
@@ -233,7 +233,7 @@ Note the ack body contract: on this branch (off `main`, which lacks `fd84c7e`) t
 ### T4b — why it was deferred, and then how it ran
 This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 files — the alerts UI lives only in `feat/alert-web-ui`, whose commits are still unpushed). The `/alertas` SSR re-check was therefore **not runnable here**, and it is not this task's responsibility: it verifies the *web* feature, not the backend fix.
 
-T5 was therefore followed by a **cherry-pick of `91e8633` onto `feat/alert-web-ui` as `bfa0d4d`**, and T4b ran there. Cherry-pick rather than merge, to keep the stacked-PR branch's history linear. The cherry-pick auto-merged `api/tests/test_alerts.py`, so the combination was re-verified: **21 alerts tests passed, 120 full suite passed** (the 2 extra tests over the fix branch belong to this branch's `fd84c7e` actor hardening).
+T5 was therefore followed by a **cherry-pick of the timestamp fix (`91e8633`) onto `feat/alert-web-ui`**, and T4b ran there. Cherry-pick rather than merge, to keep the stacked-PR branch's history linear. The cherry-pick auto-merged `api/tests/test_alerts.py`, so the combination was re-verified: **21 alerts tests passed, 120 full suite passed** (the 2 extra tests over the fix branch belong to the `alert-web-ui` branch's D1 Option A actor-identity hardening commit).
 
 That cherry-pick is now redundant. This feature shipped to `main` as PR #16 (merge `b1a2197`), so rebasing `feat/alert-web-ui` onto `main` drops it as an already-applied patch instead of duplicating it. The 21/120 counts stay valid, because the tests the dropped patch added are already on `main`.
 

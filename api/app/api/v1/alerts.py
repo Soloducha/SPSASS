@@ -137,9 +137,13 @@ async def acknowledge_alert(
     alert_id: UUID,
     data: AlertAckRequest,
 ) -> AlertAckResponse:
-    """Marca una alerta como acknowledged."""
+    """Marca una alerta como acknowledged.
+
+    El actor (acknowledged_by) SIEMPRE se deriva del usuario autenticado (`user.id`).
+    El campo `data.acknowledged_by` del body se ignora (deprecated, solo compatibilidad).
+    """
     repo = AlertRepository(session)
-    alert = await repo.acknowledge(alert_id, data.acknowledged_by)
+    alert = await repo.acknowledge(alert_id, user.id)
     if not alert:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -149,7 +153,7 @@ async def acknowledge_alert(
         "alert_acknowledged",
         alert_id=str(alert_id),
         tenant_id=str(user.tenant_id),
-        acknowledged_by=str(data.acknowledged_by),
+        acknowledged_by=str(user.id),
     )
     return AlertAckResponse(
         id=alert.id,

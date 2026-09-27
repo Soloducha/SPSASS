@@ -200,9 +200,14 @@ class AlertResponse(BaseModel):
 
 
 class AlertAckRequest(BaseModel):
-    """Request para acknowledge de alerta."""
+    """Request para acknowledge de alerta.
 
-    acknowledged_by: UUID
+    El campo `acknowledged_by` está **deprecated/ignorado**.
+    El actor se deriva siempre del usuario autenticado (JWT `sub`).
+    Se mantiene solo para compatibilidad hacia atrás.
+    """
+
+    acknowledged_by: UUID | None = None
 
 
 class AlertAckResponse(BaseModel):

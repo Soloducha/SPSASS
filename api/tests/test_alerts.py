@@ -45,6 +45,16 @@ async def _register_and_login(client: AsyncClient, email: str) -> str:
     return login_resp.json()["access_token"]  # type: ignore[no-any-return]
 
 
+async def _get_user_id(client: AsyncClient, token: str) -> str:
+    """Obtiene el ID del usuario autenticado vía /auth/me."""
+    me_resp = await client.get(
+        "/auth/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert me_resp.status_code == 200
+    return me_resp.json()["id"]
+
+
 async def _create_api_key(client: AsyncClient, token: str, name: str) -> str:
     """Crea API key y retorna raw_key."""
     create_resp = await client.post(
@@ -844,17 +854,25 @@ class TestAlertsAPI:
 
     @pytest.mark.asyncio
     async def test_ack_alert_marks_acknowledged(self, async_client: AsyncClient) -> None:
-        """POST /alerts/{id}/ack marca acknowledged + acknowledged_at."""
+        """POST /alerts/{id}/ack marca acknowledged + acknowledged_at.
+
+        El actor (acknowledged_by) debe ser el usuario autenticado, NO el UUID
+        aleatorio enviado en el body (regresión: body field ahora es ignorado).
+        """
         client = async_client
         token = await _register_and_login(client, "alert_ack_owner@example.com")
         api_key = await _create_api_key(client, token, "Agent Ack")
 
         rule_id, alert_id = await self._setup_alert_via_engine(client, token, api_key)
 
-        # Ack - use a valid UUID for acknowledged_by
+        # Obtener el user_id del usuario autenticado
+        user_id = await _get_user_id(client, token)
+
+        # Ack - enviar UUID aleatorio en body (regresión: debe ser ignorado)
+        random_uuid = str(uuid4())
         ack_resp = await client.post(
             f"/api/v1/alerts/{alert_id}/ack",
-            json={"acknowledged_by": str(uuid4())},
+            json={"acknowledged_by": random_uuid},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert ack_resp.status_code == 200
@@ -863,7 +881,9 @@ class TestAlertsAPI:
         assert ack_data["status"] == "acknowledged"
         assert ack_data["acknowledged_at"] is not None
         assert ack_data["resolved_at"] is None
-        assert ack_data["acknowledged_by"] is not None
+        # El actor debe ser el usuario autenticado, NO el UUID aleatorio del body
+        assert ack_data["acknowledged_by"] == user_id
+        assert ack_data["acknowledged_by"] != random_uuid
 
         # Verificar en list
         list_resp = await client.get(
@@ -871,6 +891,7 @@ class TestAlertsAPI:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert list_resp.json()[0]["status"] == "acknowledged"
+        assert list_resp.json()[0]["acknowledged_by"] == user_id
 
     @pytest.mark.asyncio
     async def test_resolve_alert_marks_resolved(self, async_client: AsyncClient) -> None:
@@ -903,19 +924,29 @@ class TestAlertsAPI:
 
     @pytest.mark.asyncio
     async def test_ack_then_resolve_works(self, async_client: AsyncClient) -> None:
-        """Ack seguido de resolve funciona (ack → resolved)."""
+        """Ack seguido de resolve funciona (ack → resolved).
+
+        El actor del ack debe ser el usuario autenticado (body ignorado).
+        """
         client = async_client
         token = await _register_and_login(client, "alert_ack_resolve@example.com")
         api_key = await _create_api_key(client, token, "Agent AR")
 
         rule_id, alert_id = await self._setup_alert_via_engine(client, token, api_key)
 
-        # Ack
-        await client.post(
+        # Obtener el user_id del usuario autenticado
+        user_id = await _get_user_id(client, token)
+
+        # Ack - enviar UUID aleatorio en body (debe ser ignorado)
+        random_uuid = str(uuid4())
+        ack_resp = await client.post(
             f"/api/v1/alerts/{alert_id}/ack",
-            json={"acknowledged_by": str(uuid4())},
+            json={"acknowledged_by": random_uuid},
             headers={"Authorization": f"Bearer {token}"},
         )
+        assert ack_resp.status_code == 200
+        assert ack_resp.json()["acknowledged_by"] == user_id
+        assert ack_resp.json()["acknowledged_by"] != random_uuid
 
         # Resolve
         resolve_resp = await client.post(
@@ -926,6 +957,62 @@ class TestAlertsAPI:
         assert resolve_resp.json()["status"] == "resolved"
         # acknowledged_at se mantiene
         assert resolve_resp.json()["acknowledged_at"] is not None
+        # acknowledged_by se mantiene (el user_id, no el random_uuid)
+        assert resolve_resp.json()["acknowledged_by"] == user_id
+
+    @pytest.mark.asyncio
+    async def test_ack_with_empty_body_uses_authenticated_user(self, async_client: AsyncClient) -> None:
+        """ACK con body vacío (sin acknowledged_by) → 200, actor es el usuario autenticado."""
+        client = async_client
+        token = await _register_and_login(client, "alert_ack_empty_body@example.com")
+        api_key = await _create_api_key(client, token, "Agent Empty")
+
+        rule_id, alert_id = await self._setup_alert_via_engine(client, token, api_key)
+
+        user_id = await _get_user_id(client, token)
+
+        # Ack con body vacío
+        ack_resp = await client.post(
+            f"/api/v1/alerts/{alert_id}/ack",
+            json={},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert ack_resp.status_code == 200
+        ack_data = ack_resp.json()
+        assert ack_data["id"] == alert_id
+        assert ack_data["status"] == "acknowledged"
+        assert ack_data["acknowledged_at"] is not None
+        assert ack_data["acknowledged_by"] == user_id
+
+    @pytest.mark.asyncio
+    async def test_ack_with_mismatched_body_uses_authenticated_user_no_403(self, async_client: AsyncClient) -> None:
+        """ACK con acknowledged_by distinto al usuario autenticado → 200, gana el usuario autenticado.
+
+        Por diseño NO se retorna 403 (existencia no se filtra). El body se ignora silenciosamente.
+        """
+        client = async_client
+        token = await _register_and_login(client, "alert_ack_mismatch@example.com")
+        api_key = await _create_api_key(client, token, "Agent Mismatch")
+
+        rule_id, alert_id = await self._setup_alert_via_engine(client, token, api_key)
+
+        user_id = await _get_user_id(client, token)
+        other_uuid = str(uuid4())
+        assert other_uuid != user_id
+
+        # Ack con UUID distinto al usuario autenticado
+        ack_resp = await client.post(
+            f"/api/v1/alerts/{alert_id}/ack",
+            json={"acknowledged_by": other_uuid},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert ack_resp.status_code == 200
+        ack_data = ack_resp.json()
+        assert ack_data["id"] == alert_id
+        assert ack_data["status"] == "acknowledged"
+        # El actor es el usuario autenticado, NO el UUID del body
+        assert ack_data["acknowledged_by"] == user_id
+        assert ack_data["acknowledged_by"] != other_uuid
 
     @pytest.mark.asyncio
     async def test_ack_nonexistent_returns_404(self, async_client: AsyncClient) -> None:

@@ -2,10 +2,11 @@
 
 /**
  * Tabla interactiva de alertas con filtros y paginación bounded.
- * Componente cliente para manejar estado de filtros y paginación sin recargar el servidor.
+ * Componente cliente que navega vía URL (Next.js App Router) para refrescar datos del servidor.
  */
 
 import { useState, FormEvent, ChangeEvent } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { AlertActions } from './AlertActions';
 import type { AlertResponse, AlertStatus, AlertSeverity } from '@/lib/api/alerts';
 
@@ -19,13 +20,6 @@ interface AlertsTableProps {
     offset: number;
     limit: number;
   };
-  onFetch: (params: {
-    status?: AlertStatus;
-    severity?: AlertSeverity;
-    rule_id?: string;
-    offset: number;
-    limit: number;
-  }) => Promise<void>;
 }
 
 const STATUS_LABELS: Record<AlertStatus, string> = {
@@ -56,13 +50,14 @@ export function AlertsTable({
   initialAlerts,
   initialHasNext,
   initialParams,
-  onFetch,
 }: AlertsTableProps) {
-  const [alerts, setAlerts] = useState<AlertResponse[]>(initialAlerts);
-  const [hasNext, setHasNext] = useState(initialHasNext);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Filters and pagination state derived from URL (initialParams as fallback for first render)
   const [filters, setFilters] = useState({
     status: initialParams.status ?? '',
     severity: initialParams.severity ?? '',
@@ -70,50 +65,63 @@ export function AlertsTable({
   });
   const [offset, setOffset] = useState(initialParams.offset);
   const [limit] = useState(initialParams.limit);
+  // Use initialHasNext from props (server-rendered) — updated on each navigation
+  const hasNext = initialHasNext;
 
-  const fetchAlerts = async (newOffset?: number, resetOffset = false) => {
+  const buildUrl = (params: {
+    status?: string;
+    severity?: string;
+    rule_id?: string;
+    offset: number;
+    limit: number;
+  }) => {
+    const newParams = new URLSearchParams(searchParams.toString());
+    if (params.status) newParams.set('status', params.status);
+    else newParams.delete('status');
+    if (params.severity) newParams.set('severity', params.severity);
+    else newParams.delete('severity');
+    if (params.rule_id) newParams.set('rule_id', params.rule_id);
+    else newParams.delete('rule_id');
+    newParams.set('offset', String(params.offset));
+    newParams.set('limit', String(params.limit));
+    return `${pathname}?${newParams.toString()}`;
+  };
+
+  const navigate = (targetOffset: number, resetOffset = false) => {
     setIsLoading(true);
-    setError(null);
-
-    const targetOffset = resetOffset ? 0 : (newOffset ?? offset);
+    const finalOffset = resetOffset ? 0 : targetOffset;
     if (resetOffset) setOffset(0);
-
-    try {
-      await onFetch({
-        status: filters.status as AlertStatus | undefined,
-        severity: filters.severity as AlertSeverity | undefined,
-        rule_id: filters.rule_id || undefined,
-        offset: targetOffset,
-        limit,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar alertas');
-    } finally {
-      setIsLoading(false);
-    }
+    else setOffset(finalOffset);
+    router.push(buildUrl({
+      status: filters.status || undefined,
+      severity: filters.severity || undefined,
+      rule_id: filters.rule_id || undefined,
+      offset: finalOffset,
+      limit,
+    }));
   };
 
   const handleFilterChange = (e: ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
     const { name, value } = e.target;
     setFilters((prev) => ({ ...prev, [name]: value }));
     // Reset offset to 0 when filters change
-    fetchAlerts(0, true);
+    navigate(0, true);
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    fetchAlerts(0, true);
+    navigate(0, true);
   };
 
   const handlePrev = () => {
     if (offset > 0) {
-      fetchAlerts(Math.max(0, offset - limit));
+      navigate(Math.max(0, offset - limit));
     }
   };
 
   const handleNext = () => {
     if (hasNext) {
-      fetchAlerts(offset + limit);
+      navigate(offset + limit);
     }
   };
 
@@ -136,16 +144,11 @@ export function AlertsTable({
     return `${message.slice(0, 80)}…`;
   };
 
+  // Use initialAlerts from props (server-rendered data) — updated on each navigation
+  const alerts = initialAlerts;
+
   return (
     <section aria-labelledby="alerts-table-heading">
-      <div className="mb-4" role="status" aria-live="polite" aria-atomic="true">
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
-            {error}
-          </div>
-        )}
-      </div>
-
       {/* Filtros */}
       <form onSubmit={handleSubmit} className="mb-6 flex flex-col sm:flex-row gap-4 items-start">
         <div className="flex-1 min-w-[200px]">

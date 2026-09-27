@@ -41,11 +41,11 @@ Aware `datetime.now(UTC)` values written into those ORM-typed columns then fail 
 ## Tasks
 | ID | Task | Status |
 |----|------|--------|
-| T1 | Model: add `DateTime(timezone=True)` to the 4 alert timestamp columns + import `DateTime` | ⬜ |
-| T2 | Regression test: assert the ORM declares timezone-aware columns for all 4 (runs in CI on SQLite) | ⬜ |
+| T1 | Model: add `DateTime(timezone=True)` to the 4 alert timestamp columns + import `DateTime` | ✅ |
+| T2 | Regression test: assert the ORM declares timezone-aware columns for all 4 (runs in CI on SQLite) | ✅ |
 | T3 | Static + test gate green: `ruff check --exit-non-zero-on-fix app/`, `mypy app`, full `pytest` | ✅ |
 | T4 | Runtime proof against real Postgres: empty autogenerate diff, alert actually CREATED end-to-end, ack → resolve round trip, `delivered_at` populated | ✅ |
-| T4b | **Deferred to `feat/alert-web-ui`**: re-check `/alertas` SSR with a real alert row (see below) | ⬜ |
+| T4b | `/alertas` SSR re-checked with a real alert row, on `feat/alert-web-ui` | ✅ |
 | T5 | Work-unit commit on the feature branch | ✅ |
 
 ## Authorized Scope
@@ -228,10 +228,31 @@ Note the ack body contract: on this branch (off `main`, which lacks `fd84c7e`) t
 
 ### Residual gaps
 - `web` alert channel, webhook retry/backoff, and multi-tenant isolation under concurrent load are untouched by this fix and remain unverified here.
-- T4b is the open item that actually matters for the product: the `/alertas` SSR check is still pending on `feat/alert-web-ui`.
+- T4b is closed. The `/alertas` SSR check no longer gates anything on this feature; how it ran is recorded below.
+
+### T4b — why it was deferred, and then how it ran
+This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 files — the alerts UI lives only in `feat/alert-web-ui`, whose commits are still unpushed). The `/alertas` SSR re-check was therefore **not runnable here**, and it is not this task's responsibility: it verifies the *web* feature, not the backend fix.
+
+T5 was therefore followed by a **cherry-pick of `91e8633` onto `feat/alert-web-ui` as `bfa0d4d`**, and T4b ran there. Cherry-pick rather than merge, to keep the stacked-PR branch's history linear. The cherry-pick auto-merged `api/tests/test_alerts.py`, so the combination was re-verified: **21 alerts tests passed, 120 full suite passed** (the 2 extra tests over the fix branch belong to this branch's `fd84c7e` actor hardening).
+
+That cherry-pick is now redundant. This feature shipped to `main` as PR #16 (merge `b1a2197`), so rebasing `feat/alert-web-ui` onto `main` drops it as an already-applied patch instead of duplicating it. The 21/120 counts stay valid, because the tests the dropped patch added are already on `main`.
+
+T4b result: `/alertas` server-renders both real alert rows, and the filters and pagination work server-side.
+
+| Request | Rows returned | Correct |
+|---|---|---|
+| `/alertas` | 2 | ✅ |
+| `/alertas?status=open` | 1 — only `456dcf2e` | ✅ |
+| `/alertas?status=resolved` | 1 — only `38ad9632` | ✅ |
+| `/alertas?severity=warning` | 2 | ✅ |
+| `/alertas?offset=1&limit=1` | 1, `hasNext=true` | ✅ |
+
+Orchestrator re-verification with its own `curl.exe`: the SSR HTML is 25,742 bytes and contains both alert ids, the alert message and 7 status/severity badge occurrences; `?status=open` contains the open alert and **zero** occurrences of the resolved one. Tenant alignment was established explicitly — the dashboard token's tenant and the alert rows' tenant are the same (`1f350381-dea0-4f2f-8a29-7daab42225bf`), which is the thing this page actually exercises.
+
+This unblocks T2 of `alert-web-ui`. See `odd/tasks/alert-web-ui.md` for the updated status and for what still needs a real browser.
 
 ## Next Steps
-1. **Merge or cherry-pick this work unit into `feat/alert-web-ui`**, then run T4b: re-check `/alertas` SSR with a real alert row and close that feature's T2.
-2. Open the `alert-web-ui` chain as stacked PRs after this one merges. Slice #1 is already split into three independently-green commits (`8de276a` typed API client 109 lines, `584c5c0` page+table 444, `0655e9c` app shell 42). Slices #3 and #4 carry a recorded `size:exception`; 444 on `584c5c0` is deliberately not reduced further because the only smaller seam breaks the page-to-table import.
-3. This branch pushes and opens as the P0 PR against `main`, which must land before the web chain.
-4. Worth considering separately: a Postgres-backed test profile. SQLite ignoring the timezone flag is why this defect could sit unnoticed behind a fully green suite.
+1. **Open the `alert-web-ui` chain as stacked PRs against `main`**, in slice order. Chain strategy `stacked-to-main` is confirmed. Slice #1 is already split into three independently-green commits: typed server-only alerts API client (109 lines), read-only overview page + table (444), app shell + navigation (42). Slices #3 and #4 carry a recorded `size:exception`; the 444-line commit is deliberately not reduced further because the only smaller seam breaks the page-to-table import.
+2. Nothing is pending on the backend side. This fix is on `main` via PR #16, merge `b1a2197`, and the push/PR authorization is spent.
+3. Browser-verification status for the alerts UI is no longer tracked here — it lives in `odd/tasks/alert-web-ui.md`, which records the click-through and its findings.
+4. Worth considering separately: a Postgres-backed test profile. SQLite ignoring the timezone flag is why this defect could sit unnoticed behind a fully green suite — and it is the second time this suite has hidden Postgres-only bugs (see `T9`).

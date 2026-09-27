@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * Server Actions para mutaciones de reglas de alerta (crear, toggle, eliminar).
+ * Server Actions para mutaciones de reglas de alerta (crear, actualizar, toggle, eliminar).
  * Cada acción valida independientemente el token antes de llamar al backend.
  */
 
@@ -10,11 +10,14 @@ import {
   createAlertRule,
   deleteAlertRule,
   toggleRuleEnabled,
+  updateAlertRule,
   type AlertRuleCreate,
   type AlertRuleResponse,
+  type AlertRuleUpdate,
   type FetchResult,
 } from '@/lib/api/rules';
 import { getDashboardToken } from '@/lib/config';
+import { mapApiError } from './utils';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,6 +26,11 @@ const ALLOWED_OPERATORS = ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] as const;
 const ALLOWED_SEVERITIES = ['info', 'warning', 'critical'] as const;
 
 interface CreateRuleResult {
+  rule: AlertRuleResponse | null;
+  error?: string;
+}
+
+interface UpdateRuleResult {
   rule: AlertRuleResponse | null;
   error?: string;
 }
@@ -40,6 +48,16 @@ interface DeleteRuleResult {
 function validateRuleId(ruleId: string): string | null {
   if (!ruleId || !UUID_REGEX.test(ruleId)) {
     return 'ID de regla inválido';
+  }
+  return null;
+}
+
+function validateEntityId(entityId: string | undefined): string | null {
+  if (entityId && entityId.trim().length > 0) {
+    const trimmed = entityId.trim();
+    if (!UUID_REGEX.test(trimmed)) {
+      return 'ID de entidad debe ser un UUID válido';
+    }
   }
   return null;
 }
@@ -93,17 +111,54 @@ function validateCreateRuleData(data: AlertRuleCreate): string | null {
   return null;
 }
 
-function mapApiError(status: number | null, detail: string): string {
-  if (status === 404) {
-    return 'La regla ya no existe o no pertenece a este tenant';
+function validateUpdateRuleData(data: AlertRuleUpdate): string | null {
+  if (data.entity_type !== undefined && !ALLOWED_ENTITY_TYPES.includes(data.entity_type)) {
+    return 'Tipo de entidad no válido';
   }
-  if (status === 401) {
-    return 'El token de API configurado es inválido o ha expirado';
+  if (data.metric !== undefined && (data.metric.trim().length === 0 || data.metric.length > 100)) {
+    return 'La métrica es obligatoria (máximo 100 caracteres)';
   }
-  if (status === 422) {
-    return `Datos inválidos: ${detail}`;
+  if (data.operator !== undefined && !ALLOWED_OPERATORS.includes(data.operator)) {
+    return 'Operador no válido';
   }
-  return detail;
+  if (data.threshold !== undefined && (typeof data.threshold !== 'number' || !Number.isFinite(data.threshold))) {
+    return 'El umbral debe ser un número válido';
+  }
+  if (data.duration_s !== undefined && (data.duration_s < 1 || !Number.isInteger(data.duration_s))) {
+    return 'La duración debe ser un entero positivo (segundos)';
+  }
+  if (data.severity !== undefined && !ALLOWED_SEVERITIES.includes(data.severity)) {
+    return 'Severidad no válida';
+  }
+  if (data.channels !== undefined) {
+    if (!data.channels || Object.keys(data.channels).length === 0) {
+      return 'Se requiere al menos un canal (email o webhook)';
+    }
+    if (data.channels.email) {
+      if (!Array.isArray(data.channels.email.to) || data.channels.email.to.length === 0) {
+        return 'El canal email requiere al menos un destinatario';
+      }
+      for (const email of data.channels.email.to) {
+        if (typeof email !== 'string' || email.trim().length === 0) {
+          return 'Todos los destinatarios email deben ser cadenas no vacías';
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+          return 'Formato de email inválido en destinatarios';
+        }
+      }
+    }
+    if (data.channels.webhook) {
+      if (typeof data.channels.webhook.url !== 'string' || data.channels.webhook.url.trim().length === 0) {
+        return 'El canal webhook requiere una URL';
+      }
+      try {
+        new URL(data.channels.webhook.url);
+      } catch {
+        return 'URL de webhook inválida';
+      }
+    }
+  }
+  return null;
 }
 
 async function validateToken(): Promise<string | null> {
@@ -175,10 +230,14 @@ export async function createAlertRuleAction(
     is_active: isActive,
   };
 
-  // Validate
+  // Validate (including entity_id UUID guard)
   const validationError = validateCreateRuleData(ruleData);
   if (validationError) {
     return { rule: null, error: validationError };
+  }
+  const entityIdError = validateEntityId(ruleData.entity_id);
+  if (entityIdError) {
+    return { rule: null, error: entityIdError };
   }
 
   try {
@@ -195,6 +254,108 @@ export async function createAlertRuleAction(
     return {
       rule: null,
       error: err instanceof Error ? err.message : 'Error inesperado al crear la regla',
+    };
+  }
+}
+
+/**
+ * Server Action para actualizar una regla de alerta.
+ * Valida el token, el ID de regla, el ID de entidad (UUID) y los datos antes de llamar al backend.
+ */
+export async function updateAlertRuleAction(
+  _prevState: UpdateRuleResult,
+  formData: FormData
+): Promise<UpdateRuleResult> {
+  const tokenError = await validateToken();
+  if (tokenError) {
+    return { rule: null, error: tokenError };
+  }
+
+  const ruleId = formData.get('ruleId') as string;
+  const idError = validateRuleId(ruleId);
+  if (idError) {
+    return { rule: null, error: idError };
+  }
+
+  // Parse form data (all optional for PATCH)
+  const entityType = formData.get('entity_type') as string | null;
+  const entityId = formData.get('entity_id') as string | null;
+  const metric = formData.get('metric') as string | null;
+  const operator = formData.get('operator') as string | null;
+  const thresholdStr = formData.get('threshold') as string | null;
+  const durationStr = formData.get('duration_s') as string | null;
+  const severity = formData.get('severity') as string | null;
+  const isActiveStr = formData.get('is_active') as string | null;
+
+  // Parse channels (optional, but if present must be valid)
+  const emailToRaw = formData.get('email_to') as string | null;
+  const webhookUrl = formData.get('webhook_url') as string | null;
+  const webhookHeadersRaw = formData.get('webhook_headers') as string | null;
+
+  const channels: AlertRuleUpdate['channels'] = {};
+
+  if (emailToRaw !== null && emailToRaw.trim().length > 0) {
+    const emails = emailToRaw.split(',').map(e => e.trim()).filter(e => e.length > 0);
+    if (emails.length > 0) {
+      channels.email = { to: emails };
+    }
+  } else if (emailToRaw === '') {
+    // Explicitly clear email channel
+    channels.email = undefined;
+  }
+
+  if (webhookUrl !== null && webhookUrl.trim().length > 0) {
+    let headers: Record<string, string> = {};
+    if (webhookHeadersRaw !== null && webhookHeadersRaw.trim().length > 0) {
+      try {
+        headers = JSON.parse(webhookHeadersRaw);
+      } catch {
+        return { rule: null, error: 'Headers de webhook deben ser JSON válido' };
+      }
+    }
+    channels.webhook = { url: webhookUrl.trim(), headers };
+  } else if (webhookUrl === '') {
+    // Explicitly clear webhook channel
+    channels.webhook = undefined;
+  }
+
+  const ruleData: AlertRuleUpdate = {};
+
+  if (entityType !== null) ruleData.entity_type = entityType as AlertRuleUpdate['entity_type'];
+  if (entityId !== null) ruleData.entity_id = entityId.trim().length > 0 ? entityId.trim() : null;
+  if (metric !== null) ruleData.metric = metric.trim();
+  if (operator !== null) ruleData.operator = operator as AlertRuleUpdate['operator'];
+  if (thresholdStr !== null) ruleData.threshold = parseFloat(thresholdStr);
+  if (durationStr !== null) ruleData.duration_s = parseInt(durationStr, 10);
+  if (severity !== null) ruleData.severity = severity as AlertRuleUpdate['severity'];
+  if (isActiveStr !== null) ruleData.is_active = isActiveStr === 'true';
+  if (Object.keys(channels).length > 0) ruleData.channels = channels;
+
+  // Validate (including entity_id UUID guard)
+  const validationError = validateUpdateRuleData(ruleData);
+  if (validationError) {
+    return { rule: null, error: validationError };
+  }
+  const entityIdError = validateEntityId(ruleData.entity_id ?? undefined);
+  if (entityIdError) {
+    return { rule: null, error: entityIdError };
+  }
+
+  try {
+    const result: FetchResult<AlertRuleResponse> = await updateAlertRule(ruleId, ruleData);
+
+    if (result.error) {
+      const message = mapApiError(result.status, result.error);
+      return { rule: null, error: message };
+    }
+
+    revalidatePath('/alertas/reglas');
+    revalidatePath(`/alertas/reglas/${ruleId}/editar`);
+    return { rule: result.data!, error: undefined };
+  } catch (err) {
+    return {
+      rule: null,
+      error: err instanceof Error ? err.message : 'Error inesperado al actualizar la regla',
     };
   }
 }

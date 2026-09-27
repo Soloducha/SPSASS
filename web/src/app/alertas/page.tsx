@@ -6,7 +6,7 @@
 import Link from 'next/link';
 import { listAlerts } from '@/lib/api/alerts';
 import { AlertsTable } from './components/AlertsTable';
-import type { AlertListParams, AlertResponse, AlertStatus, AlertSeverity } from '@/lib/api/alerts';
+import type { AlertStatus, AlertSeverity } from '@/lib/api/alerts';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,15 +76,6 @@ export default async function AlertasPage({ searchParams }: AlertsPageProps) {
     limit,
   };
 
-  // Async function to be called by client component for refetching
-  async function fetchAlertsClient(newParams: AlertListParams) {
-    // This function will be called from the client component via server action
-    // For now, we pass the initial data and the client handles navigation
-    // The actual refetching happens via page reload with new searchParams
-    // This is a limitation of pure Server Components without server actions for data fetching
-    // In a full implementation with T2, we'd use Server Actions for mutations and revalidation
-  }
-
   return (
     <main className="mx-auto max-w-6xl px-4 py-10" id="alertas-main">
       <header className="mb-8">
@@ -111,8 +102,7 @@ export default async function AlertasPage({ searchParams }: AlertsPageProps) {
         <AlertsTable
           initialAlerts={alerts}
           initialHasNext={hasNext}
-          initialParams={{ ...initialParams, offset, limit }}
-          onFetch={fetchAlertsClient}
+          initialParams={initialParams}
         />
       )}
     </main>

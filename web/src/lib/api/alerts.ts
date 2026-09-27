@@ -1,4 +1,4 @@
-/** Server-only typed fetch wrappers for `/api/v1/alerts` endpoints (read-only for T1). */
+/** Server-only typed fetch wrappers for `/api/v1/alerts` endpoints. */
 
 import { getDashboardToken, getSpsaasApiUrl } from '@/lib/config';
 
@@ -30,6 +30,27 @@ export interface AlertListParams {
   limit?: number;
 }
 
+export interface AlertAckResponse {
+  id: string;
+  status: AlertStatus;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  acknowledged_by: string | null;
+}
+
+/** Result of an authenticated fetch, including the HTTP status for error mapping. */
+export interface FetchResult<T> {
+  data: T | null;
+  error: string | null;
+  status: number | null;
+}
+
+/** Result of a Server Action mutation. */
+export interface ActionResult {
+  status: 'success' | 'error';
+  message: string;
+}
+
 function buildAlertsUrl(path: string, params?: URLSearchParams): string {
   const base = getSpsaasApiUrl();
   const url = new URL(`${base}/api/v1/alerts${path}`);
@@ -42,10 +63,10 @@ function buildAlertsUrl(path: string, params?: URLSearchParams): string {
 async function fetchWithAuth<T>(
   url: string,
   init?: RequestInit
-): Promise<{ data: T | null; error: string | null }> {
+): Promise<FetchResult<T>> {
   const token = getDashboardToken();
   if (!token) {
-    return { data: null, error: 'Token de dashboard no configurado (SPSAAS_DASHBOARD_TOKEN)' };
+    return { data: null, error: 'Token de dashboard no configurado (SPSAAS_DASHBOARD_TOKEN)', status: null };
   }
 
   try {
@@ -67,13 +88,13 @@ async function fetchWithAuth<T>(
       } catch {
         // ignore parse error
       }
-      return { data: null, error: detail };
+      return { data: null, error: detail, status: response.status };
     }
 
     const data = (await response.json()) as T;
-    return { data, error: null };
+    return { data, error: null, status: response.status };
   } catch (err) {
-    return { data: null, error: err instanceof Error ? err.message : 'Error de red desconocido' };
+    return { data: null, error: err instanceof Error ? err.message : 'Error de red desconocido', status: null };
   }
 }
 
@@ -105,5 +126,30 @@ export async function listAlerts(params: AlertListParams = {}): Promise<{
   const alerts = result.data ?? [];
   const hasNext = alerts.length === Number(searchParams.get('limit'));
   return { alerts, hasNext, error: null };
+}
+
+/**
+ * Reconoce (acknowledge) una alerta.
+ * El backend deriva el actor del usuario autenticado (JWT sub) e ignora cualquier valor en el body.
+ * Se envía un body JSON vacío válido porque el endpoint requiere AlertAckRequest.
+ */
+export async function acknowledgeAlert(alertId: string): Promise<FetchResult<AlertAckResponse>> {
+  const url = buildAlertsUrl(`/${alertId}/ack`);
+  // Body vacío válido: AlertAckRequest.acknowledged_by es opcional y deprecated
+  return fetchWithAuth<AlertAckResponse>(url, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+/**
+ * Resuelve una alerta.
+ * Sin body.
+ */
+export async function resolveAlert(alertId: string): Promise<FetchResult<AlertAckResponse>> {
+  const url = buildAlertsUrl(`/${alertId}/resolve`);
+  return fetchWithAuth<AlertAckResponse>(url, {
+    method: 'POST',
+  });
 }
 

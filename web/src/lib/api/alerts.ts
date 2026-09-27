@@ -45,6 +45,12 @@ export interface FetchResult<T> {
   status: number | null;
 }
 
+/** Result of a Server Action mutation. */
+export interface ActionResult {
+  status: 'success' | 'error';
+  message: string;
+}
+
 function buildAlertsUrl(path: string, params?: URLSearchParams): string {
   const base = getSpsaasApiUrl();
   const url = new URL(`${base}/api/v1/alerts${path}`);

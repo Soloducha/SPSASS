@@ -10,9 +10,9 @@
 
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { alertAction } from '../actions';
-import type { AlertResponse, AlertStatus } from '@/lib/api/alerts';
+import type { AlertResponse, ActionResult } from '@/lib/api/alerts';
 
 interface AlertActionsProps {
   alert: AlertResponse;
@@ -57,12 +57,14 @@ function SubmitButtons({
 }
 
 function AlertActionsForm({ alert }: { alert: AlertResponse }) {
-  const [state, formAction] = useActionState(alertAction, { status: 'error', message: '' });
+  const initialState: ActionResult = { status: 'error', message: '' };
+  const [state, formAction] = useActionState(alertAction, initialState);
   const [pendingIntent, setPendingIntent] = useState<'ack' | 'resolve' | null>(null);
 
-  const handleFormSubmit = (formData: FormData) => {
+  const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
     // The actual submission is handled by useActionState via formAction
     // We just track which intent was submitted
+    const formData = new FormData(event.currentTarget);
     const intent = formData.get('intent') as 'ack' | 'resolve';
     if (intent) {
       setPendingIntent(intent);

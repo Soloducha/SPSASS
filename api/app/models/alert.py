@@ -88,6 +88,7 @@ class Alert(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     server_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("servers.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    target_entity_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
     severity: Mapped[AlertSeverity] = mapped_column(
         SAEnum(AlertSeverity, name="alert_severity", values_callable=lambda e: [m.value for m in e]),
         nullable=False,

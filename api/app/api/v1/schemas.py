@@ -1,13 +1,22 @@
-"""Esquemas Pydantic para API v1 (servidores, ingesta, alertas)."""
+"""Esquemas Pydantic para API v1 (servidores, ingesta, alertas, procesos, servicios, jobs)."""
 
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    HttpUrl,
+    field_validator,
+    model_validator,
+)
 
 from app.models.alert import AlertOperator, AlertSeverity, AlertStatus, EntityType
+from app.models.job import JobKind, JobStatus
 from app.models.metric import MetricType
+from app.models.service import ServiceState
 
 
 # ──────────────────────────────────────────────
@@ -229,5 +238,181 @@ class AlertListParams(BaseModel):
     status: AlertStatus | None = None
     severity: AlertSeverity | None = None
     rule_id: UUID | None = None
+    limit: int = Field(default=100, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+
+
+# ──────────────────────────────────────────────
+# Process Schemas (T1)
+# ──────────────────────────────────────────────
+class ProcessCreate(BaseModel):
+    """Request para crear un proceso."""
+
+    server_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    pattern: str = Field(min_length=1, max_length=500)
+    expected_count: int = Field(default=1, ge=1)
+    auto_restart: bool = False
+    config: dict = Field(default_factory=dict)
+
+
+class ProcessUpdate(BaseModel):
+    """Request para actualizar un proceso (campos opcionales)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    pattern: str | None = Field(default=None, min_length=1, max_length=500)
+    expected_count: int | None = Field(default=None, ge=1)
+    auto_restart: bool | None = None
+    config: dict | None = None
+
+
+class ProcessResponse(BaseModel):
+    """Response de proceso."""
+
+    id: UUID
+    tenant_id: UUID
+    server_id: UUID
+    name: str
+    pattern: str
+    expected_count: int
+    auto_restart: bool
+    config: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ──────────────────────────────────────────────
+# Service Schemas (T1)
+# ──────────────────────────────────────────────
+class ServiceCreate(BaseModel):
+    """Request para crear un servicio."""
+
+    server_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    desired_state: ServiceState = ServiceState.RUNNING
+    auto_restart: bool = False
+    config: dict = Field(default_factory=dict)
+
+
+class ServiceUpdate(BaseModel):
+    """Request para actualizar un servicio (campos opcionales)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    desired_state: ServiceState | None = None
+    auto_restart: bool | None = None
+    config: dict | None = None
+
+
+class ServiceResponse(BaseModel):
+    """Response de servicio."""
+
+    id: UUID
+    tenant_id: UUID
+    server_id: UUID
+    name: str
+    desired_state: ServiceState
+    auto_restart: bool
+    last_status: ServiceState
+    last_checked_at: datetime | None
+    config: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ──────────────────────────────────────────────
+# Job Schemas (T1)
+# ──────────────────────────────────────────────
+class JobCreate(BaseModel):
+    """Request para crear un job."""
+
+    server_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    kind: JobKind
+    schedule_cron: str | None = Field(default=None, max_length=100)
+    command: str = Field(min_length=1)
+    timeout_s: int = Field(default=3600, ge=1)
+    alert_on_fail: bool = True
+    auto_restart: bool = False
+    status: JobStatus = JobStatus.ACTIVE
+    config: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_cron_schedule(self) -> "JobCreate":
+        """Valida que schedule_cron esté presente para jobs CRON."""
+        if self.kind == JobKind.CRON and not self.schedule_cron:
+            raise ValueError("schedule_cron is required for CRON jobs")
+        return self
+
+
+class JobUpdate(BaseModel):
+    """Request para actualizar un job (campos opcionales)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    kind: JobKind | None = None
+    schedule_cron: str | None = Field(default=None, max_length=100)
+    command: str | None = Field(default=None, min_length=1)
+    timeout_s: int | None = Field(default=None, ge=1)
+    alert_on_fail: bool | None = None
+    auto_restart: bool | None = None
+    status: JobStatus | None = None
+    config: dict | None = None
+
+
+class JobResponse(BaseModel):
+    """Response de job."""
+
+    id: UUID
+    tenant_id: UUID
+    server_id: UUID
+    name: str
+    kind: JobKind
+    schedule_cron: str | None
+    command: str
+    timeout_s: int
+    alert_on_fail: bool
+    auto_restart: bool
+    status: JobStatus
+    config: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ──────────────────────────────────────────────
+# JobRun Schemas (T1)
+# ──────────────────────────────────────────────
+class JobRunResponse(BaseModel):
+    """Response de ejecución de job."""
+
+    id: UUID
+    tenant_id: UUID
+    job_id: UUID
+    started_at: datetime
+    finished_at: datetime | None
+    exit_code: int | None
+    status: str
+    output_tail: str | None
+    run_metadata: dict
+
+    model_config = {"from_attributes": True}
+
+
+class JobRunListParams(BaseModel):
+    """Parámetros de consulta para listar ejecuciones de job."""
+
+    limit: int = Field(default=100, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+
+
+class JobListParams(BaseModel):
+    """Parámetros de consulta para listar jobs."""
+
+    server_id: UUID | None = None
+    status: JobStatus | None = None
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)

@@ -1,8 +1,8 @@
 # Feature: Deps refresh — rondas por riesgo
 
-- **Estado**: en progreso
-- **Rama**: `feature/deps-refresh` (basada en feature/next16-web, sin main aún)
-- **Última actualización**: 2026-09-21
+- **Estado**: rondas 1 y 2 completadas y entregadas en `main` (T1–T8; T8 quedó BLOQUEADA por arq, con su fix de worker aplicado). Verificado en el árbol actual: `fastapi==0.141.1`, `tailwindcss 4.3.3`, `agent/go.mod` en `go 1.27.1`.
+- **Rama**: eliminada tras el merge. Los commits `ac2a7f4`, `b6f2654`, `ee156a7`, `34f5029`, `7e9e9a9`, `646ed57`, `ba77c05` están verificados como ancestros de `main`.
+- **Última actualización**: 2026-09-27
 
 ## Objetivo
 
@@ -34,7 +34,7 @@ Actualizar dependencias de bajo riesgo en todo el monorepo (web/api/agent), veri
 ## Fuera de alcance
 
 - Ronda 2: tailwind 4, redis 8, pytest 9 + plugins, httpx 0.28, mypy 2, fastapi 0.141, typescript 7
-- No crear PR/main aún
+- ~~No crear PR/main aún~~ — **retractado**: la entrega se autorizó y el trabajo está en `main`. Redis 8 sigue bloqueado por arq 0.28.0 (`Requires-Dist: redis[hiredis]<6,>=4.2.0`), sin versión de arq compatible.
 
 ## Tareas
 

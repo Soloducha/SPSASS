@@ -1,8 +1,8 @@
 # Feature: Bump web a Next.js 16 + React 19
 
-- **Estado**: en progreso
-- **Rama**: `feature/next16-web` (basada en feature/fundaciones, sin main aún)
-- **Última actualización**: 2026-09-21
+- **Estado**: completado y entregado en `main` (T1–T6 verificados; `web/package.json` con next 16.3.5 / react 19.3.0 / eslint ^9.39.5, `web/eslint.config.mjs` presente, `web/Dockerfile` en `node:24-alpine`)
+- **Rama**: eliminada tras el merge. Los commits `a6c5849`, `a20945a`, `34ddd22`, `f79a774` están verificados como ancestros de `main`.
+- **Última actualización**: 2026-09-27
 
 ## Objetivo
 
@@ -27,7 +27,7 @@ Migrar `web/` de Next 14.2.16 (placeholder vulnerable) a **Next 16.3.5 + React 1
 
 - No migrar a Tailwind 4 (se queda en 3.4.15, compatible)
 - No migrar la API ni el worker
-- No crear PR/main aún (decisión del usuario pendiente)
+- ~~No crear PR/main aún (decisión del usuario pendiente)~~ — **retractado**: la entrega se autorizó y el trabajo está en `main`.
 
 ## Tareas
 

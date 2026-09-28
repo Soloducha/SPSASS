@@ -65,10 +65,10 @@ El Mes 3 crea entregas pendientes pero nadie las envía: el loop de alertas no a
 - Checks: pytest ✅ ruff ✅ mypy ✅ CI ✅
 
 ## Progreso
-- T1 ✅ (d902e96): SMTP settings + validación channels; 24 tests nuevos.
-- T2 ✅ (f762904): abstracción de canales + webhook; 10 tests nuevos.
-- T3 ✅ (68b116a): canal email SMTP stdlib; 9 tests nuevos.
-- T4 ✅ (8aa4d4e): runner `deliver_alerts` + cron `alert-delivery-1m`; 6 tests nuevos.
+- T1 ✅ (`d902e96`): SMTP settings + validación channels; 24 tests nuevos. PR #12 (merge `176137b`).
+- T2 ✅ (`e744bcb`, antes `f762904` reescrito por rebase): abstracción de canales + webhook; 10 tests nuevos. PR #13 (merge `339b750`).
+- T3 ✅ (`41e02a7`, antes `68b116a` reescrito por rebase): canal email SMTP stdlib; 9 tests nuevos. PR #14 (merge `c81bc2b`).
+- T4 ✅ (`2f1755e`, antes `8aa4d4e` reescrito por rebase): runner `deliver_alerts` + cron `alert-delivery-1m`; 6 tests nuevos. PR #15 (merge `c088da2`).
 - T5 ✅: suite completa 117/1/1/2, PR stack **#12→#13→#14→#15** creado, README de canales.
 
 ## Verificación evidenciada

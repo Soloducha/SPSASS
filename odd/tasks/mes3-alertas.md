@@ -88,13 +88,13 @@ motor que las use.
 - **Forecast**: ~600-800 líneas (motor ~150, API ~250, tests ~250) → supera 400 → chained PRs.
 - **Chain strategy**: stacked-to-main (elegida por el usuario 2026-09-24). Cada PR mergea a main en orden.
 - **Conteo real (work-unit commits)**: engine+cron = 243 líneas; API slice = 392 líneas; tests = 999 líneas. Total ~1.634 líneas → **3 PRs stacked-to-main** sugeridos: (A) engine+cron, (B) API slice, (C) tests.
-- **Estado de entrega**: la feature completa está en `main` (`e1bc567`). Commits vigentes verificados como ancestros de `main`:
+- **Estado de entrega**: la feature completa está en `main`, entregada como el stack de PRs **#9 → #10 → #11** (stacked-to-main, 2026-09-24). Commits vigentes verificados como ancestros de `main`:
 
-  | Slice | Commit | Subject |
-  | --- | --- | --- |
-  | A — engine+cron | `2631261` | motor de evaluación + cron `alert-eval-1m` |
-  | B — API slice | `900d80e` | `feat(api): add alert rules CRUD and alert lifecycle endpoints` |
-  | C — tests | `836dd39` | `test(api): add alert engine and lifecycle test suite (T5)` |
+  | Slice | PR | Merge | Commit vivo | Subject |
+  | --- | --- | --- | --- | --- |
+  | A — engine+cron | #9 | `8f9ca78` | `2631261` | `feat(workers): add alert evaluation engine with 1-minute cron` |
+  | B — API slice | #10 | `a09cc36` | `900d80e` | `feat(api): add alert rules CRUD and alert lifecycle endpoints` |
+  | C — tests | #11 | `8c9da82` | `836dd39` | `test(api): add alert engine and lifecycle test suite (T5)` |
 
   Los SHAs originales (`ab60dbf`, `927c135`) quedaron sin efecto: el rebase previo a la cadena de PRs los reescribió. El contenido aterrizó bajo los SHAs de la tabla; los originales no son ancestros de `main` y no deben citarse.
 

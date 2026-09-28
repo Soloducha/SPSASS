@@ -56,7 +56,7 @@ Aware `datetime.now(UTC)` values written into those ORM-typed columns then fail 
 - **T5**: one work-unit commit, local only.
 
 ### T4b is deferred, not skipped
-This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 files — the alerts UI lives only in `feat/alert-web-ui`, 19 unpushed commits). The `/alertas` SSR re-check is therefore **not runnable on this branch**. It is also not this task's responsibility: it verifies the *web* feature, not the backend fix. It becomes a follow-up on `feat/alert-web-ui` once this fix lands there, and it is what unblocks that feature's T2.
+This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 files — the alerts UI lives only in `feat/alert-web-ui`, which has since been merged to `main` as PRs #17–#26). The `/alertas` SSR re-check was therefore **not runnable on this branch**. It is also not this task's responsibility: it verifies the *web* feature, not the backend fix. It becomes a follow-up on `feat/alert-web-ui` once this fix lands there, and it is what unblocks that feature's T2.
 
 ## Out of Scope
 - **A new Alembic migration.** The database is already correct. Creating one would be wrong, not just unnecessary.
@@ -231,9 +231,9 @@ Note the ack body contract: on this branch (off `main`, which lacks the D1 Optio
 - T4b is closed. The `/alertas` SSR check no longer gates anything on this feature; how it ran is recorded below.
 
 ### T4b — why it was deferred, and then how it ran
-This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 files — the alerts UI lives only in `feat/alert-web-ui`, whose commits are still unpushed). The `/alertas` SSR re-check was therefore **not runnable here**, and it is not this task's responsibility: it verifies the *web* feature, not the backend fix.
+This branch is based on `main`, where `web/src/app/alertas/` does not exist (0 files — the alerts UI lives only in `feat/alert-web-ui`, which has since been merged to `main` as PRs #17–#26). The `/alertas` SSR re-check was therefore **not runnable here**, and it is not this task's responsibility: it verifies the *web* feature, not the backend fix.
 
-T5 was therefore followed by a **cherry-pick of the timestamp fix (`91e8633`) onto `feat/alert-web-ui`**, and T4b ran there. Cherry-pick rather than merge, to keep the stacked-PR branch's history linear. The cherry-pick auto-merged `api/tests/test_alerts.py`, so the combination was re-verified: **21 alerts tests passed, 120 full suite passed** (the 2 extra tests over the fix branch belong to the `alert-web-ui` branch's D1 Option A actor-identity hardening commit).
+T5 was therefore followed by a **cherry-pick of the timestamp fix (commit `91e8633`) onto `feat/alert-web-ui`**, and T4b ran there. Cherry-pick rather than merge, to keep the stacked-PR branch's history linear. The cherry-pick auto-merged `api/tests/test_alerts.py`, so the combination was re-verified: **21 alerts tests passed, 120 full suite passed** (the 2 extra tests over the fix branch belong to the `alert-web-ui` branch's D1 Option A actor-identity hardening commit).
 
 That cherry-pick is now redundant. This feature shipped to `main` as PR #16 (merge `b1a2197`), so rebasing `feat/alert-web-ui` onto `main` drops it as an already-applied patch instead of duplicating it. The 21/120 counts stay valid, because the tests the dropped patch added are already on `main`.
 
@@ -252,7 +252,7 @@ Orchestrator re-verification with its own `curl.exe`: the SSR HTML is 25,742 byt
 This unblocks T2 of `alert-web-ui`. See `odd/tasks/alert-web-ui.md` for the updated status and for what still needs a real browser.
 
 ## Next Steps
-1. **Open the `alert-web-ui` chain as stacked PRs against `main`**, in slice order. Chain strategy `stacked-to-main` is confirmed. Slice #1 is already split into three independently-green commits: typed server-only alerts API client (109 lines), read-only overview page + table (444), app shell + navigation (42). Slices #3 and #4 carry a recorded `size:exception`; the 444-line commit is deliberately not reduced further because the only smaller seam breaks the page-to-table import.
+1. **The `alert-web-ui` chain has been opened and merged as stacked PRs #17–#26 against `main`**. Chain strategy `stacked-to-main` was confirmed. Slice #1 was split into three independently-green commits: typed server-only alerts API client (109 lines), read-only overview page + table (444), app shell + navigation (42). Slices #3 and #4 carried a recorded `size:exception`; the 444-line commit was deliberately not reduced further because the only smaller seam breaks the page-to-table import.
 2. Nothing is pending on the backend side. This fix is on `main` via PR #16, merge `b1a2197`, and the push/PR authorization is spent.
 3. Browser-verification status for the alerts UI is no longer tracked here — it lives in `odd/tasks/alert-web-ui.md`, which records the click-through and its findings.
 4. Worth considering separately: a Postgres-backed test profile. SQLite ignoring the timezone flag is why this defect could sit unnoticed behind a fully green suite — and it is the second time this suite has hidden Postgres-only bugs (see `T9`).

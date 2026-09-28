@@ -9,7 +9,7 @@ El directorio está vacío (solo `propuesta.md`). Sin repositorio, estructura ni
 ## Alcance autorizado
 - Bootstrap del monorepo según `propuesta.md` v1.0 (mes 1 del roadmap).
 - Stack: FastAPI async + Pydantic v2 + SQLAlchemy 2.0 + Alembic; PostgreSQL 16 + TimescaleDB; Redis 7; arq (estructura de workers); Next.js 14 (placeholder); Docker obligatorio.
-- Branch `feature/fundaciones` con commits por unidad de trabajo. Sin push, sin PR aún.
+- **Entregado en `main`**: el bootstrap inicial fue rebaseado y sus commits viven en la historia de `main` (ver tabla de tareas con commits vivos). La branch `feature/fundaciones` original fue eliminada tras rebase.
 
 ## Fuera de alcance
 - Lógica del agente (mes 2), alertas (mes 3), jobs (mes 4), reportes (mes 5), onboarding/beta (mes 6).
@@ -20,22 +20,22 @@ El directorio está vacío (solo `propuesta.md`). Sin repositorio, estructura ni
 
 ## Tareas
 
-| ID | Tarea | Estado | Commit |
-|----|-------|--------|--------|
-| T1 | Inicializar repo: estructura monorepo, .gitignore, README raíz, docs/ | ✅ | `aad4100` |
-| T2 | Docker Compose dev: postgres 16 + timescale, redis, api, workers, web | ✅ | `1e07b54` |
-| T2b | Placeholder web/ Next.js 14 (vacío rompía compose) | ✅ | `b75dc96` |
-| T3 | API FastAPI base: estructura app/, settings, logging, /healthz | ✅ | `de46283` |
-| T4 | Modelos SQLAlchemy 2.0 async + migraciones Alembic (modelo de datos v1) + seed admin | ✅ | `2373028` (+ `d97254e` soporte Alembic) |
-| T5 | Auth JWT: register/login/refresh + API keys para agentes + RBAC por tenant | ✅ | `906c33c` (+ `f1a274a` tenant-bound refresh) |
-| T6 | Multi-tenant: RLS Postgres + middleware de tenant + scoping de queries | ✅ | `bbbccd4` |
-| T7 | Tests básicos: health, auth flow, aislamiento entre tenants | ✅ | `09a6188` |
-| T8 | CI GitHub Actions: lint + test | ✅ | `cd7ffa9` |
-| T9 | Verificación integral contra Postgres real: compose build ✅, migraciones 0001-0004 aplicadas ✅, pytest 28 passed / 3 xfailed ✅ | ✅ | `9dd17ae` ˑ `9f8186c` ˑ `02e0743` ˑ `e81a5b4` ˑ `0998257` ˑ `7c023af` ˑ `323ecb8` |
+| ID | Tarea | Estado | Commit (vivo en `main`) |
+|----|-------|--------|-------------------------|
+| T1 | Inicializar repo: estructura monorepo, .gitignore, README raíz, docs/ | ✅ | `3114109` (antes `aad4100`, reescrito por rebase) |
+| T2 | Docker Compose dev: postgres 16 + timescale, redis, api, workers, web | ✅ | `88dc827` (antes `1e07b54`, reescrito por rebase) |
+| T2b | Placeholder web/ Next.js 14 (vacío rompía compose) | ✅ | `10eca33` (antes `b75dc96`, reescrito por rebase) |
+| T3 | API FastAPI base: estructura app/, settings, logging, /healthz | ✅ | `a31b2da` (antes `de46283`, reescrito por rebase) |
+| T4 | Modelos SQLAlchemy 2.0 async + migraciones Alembic (modelo de datos v1) + seed admin | ✅ | `8122027` + `a180dac` (antes `2373028` + `d97254e`, reescritos por rebase) |
+| T5 | Auth JWT: register/login/refresh + API keys para agentes + RBAC por tenant | ✅ | `f761971` + `8b17b94` (antes `906c33c` + `f1a274a`, reescritos por rebase) |
+| T6 | Multi-tenant: RLS Postgres + middleware de tenant + scoping de queries | ✅ | `f8555a5` (antes `bbbccd4`, reescrito por rebase) |
+| T7 | Tests básicos: health, auth flow, aislamiento entre tenants | ✅ | `b93f7ed` (antes `09a6188`, reescrito por rebase) |
+| T8 | CI GitHub Actions: lint + test | ✅ | `ac8a4bc` (antes `cd7ffa9`, reescrito por rebase) |
+| T9 | Verificación integral contra Postgres real: compose build ✅, migraciones 0001-0004 aplicadas ✅, pytest 28 passed / 3 xfailed ✅ | ✅ | `9c607aa` + `c3d5f83` + fixes `62bc6cb`, `2e8e4fd`, `a88c9ac`, `df0529a`, `88fae5f`, `664baaf` (antes `9dd17ae`..`323ecb8`, reescritos por rebase) |
 
 ## Ruta elegida
 - **Delegada** (writer trigger: 2+ archivos no triviales — bootstrap completo). Un solo writer `general`, con skills de commits por unidad de trabajo.
-- El writer cortó su reporte dos veces (tareas grandes) → se dividió en **slices pequeños** por tarea. T1-T4 hechos (con corrección de soporte Alembic por el orquestador: `d97254e`).
+- El writer cortó su reporte dos veces (tareas grandes) → se dividió en **slices pequeños** por tarea. T1-T4 hechos (con corrección de soporte Alembic por el orquestador, commit `a180dac` en `main`, antes `d97254e` reescrito por rebase).
 - Post-delegación: gate audit del orquestador + spot check por tarea.
 
 ## Criterios de aceptación

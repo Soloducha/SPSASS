@@ -78,33 +78,66 @@ func main() {
 			return
 
 		case <-metricsTicker.C:
+			// Collect and send metrics
 			batch, err := collector.Collect(ctx, serverID)
 			if err != nil {
-				logger.Error("collect failed", "error", err)
-				continue
-			}
+				logger.Error("collect metrics failed", "error", err)
+			} else {
+				// Convert collector.MetricsBatch to sender.MetricsBatch
+				senderBatch := sender.MetricsBatch{
+					ServerID: batch.ServerID,
+					TS:       batch.TS,
+					Metrics:  make([]sender.Metric, len(batch.Metrics)),
+				}
+				for i, m := range batch.Metrics {
+					senderBatch.Metrics[i] = sender.Metric{
+						Type:  m.Type,
+						Value: m.Value,
+						Tags:  m.Tags,
+					}
+				}
 
-			// Convert collector.MetricsBatch to sender.MetricsBatch
-			senderBatch := sender.MetricsBatch{
-				ServerID: batch.ServerID,
-				TS:       batch.TS,
-				Metrics:  make([]sender.Metric, len(batch.Metrics)),
-			}
-			for i, m := range batch.Metrics {
-				senderBatch.Metrics[i] = sender.Metric{
-					Type:  m.Type,
-					Value: m.Value,
-					Tags:  m.Tags,
+				err = snd.SendMetrics(ctx, senderBatch)
+				if err != nil {
+					logger.Error("send metrics failed after retries", "error", err)
+				} else {
+					metricsSent = true
+					logger.Debug("metrics sent successfully", "count", len(batch.Metrics))
 				}
 			}
 
-			err = snd.SendMetrics(ctx, senderBatch)
+			// Collect and send entities (processes + services)
+			entitiesBatch, err := collector.CollectEntities(ctx, serverID)
 			if err != nil {
-				logger.Error("send metrics failed after retries", "error", err)
-				continue
+				logger.Error("collect entities failed", "error", err)
+			} else {
+				// Convert collector.EntitiesBatch to sender.EntitiesBatch
+				senderEntitiesBatch := sender.EntitiesBatch{
+					ServerID:  entitiesBatch.ServerID,
+					TS:        entitiesBatch.TS,
+					Processes: make([]sender.ProcessState, len(entitiesBatch.Processes)),
+					Services:  make([]sender.ServiceState, len(entitiesBatch.Services)),
+				}
+				for i, p := range entitiesBatch.Processes {
+					senderEntitiesBatch.Processes[i] = sender.ProcessState{
+						Name:    p.Name,
+						Cmdline: p.Cmdline,
+						State:   p.State,
+					}
+				}
+				for i, s := range entitiesBatch.Services {
+					senderEntitiesBatch.Services[i] = sender.ServiceState{
+						Name:  s.Name,
+						State: s.State,
+					}
+				}
+				err = snd.SendEntities(ctx, senderEntitiesBatch)
+				if err != nil {
+					logger.Error("send entities failed after retries", "error", err)
+				} else {
+					logger.Debug("entities sent successfully", "processes", len(entitiesBatch.Processes), "services", len(entitiesBatch.Services))
+				}
 			}
-			metricsSent = true
-			logger.Debug("metrics sent successfully", "count", len(batch.Metrics))
 
 		case <-heartbeatTicker.C:
 			// Only send heartbeat after first successful metrics send

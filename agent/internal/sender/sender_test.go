@@ -16,6 +16,97 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
+func TestSender_SendEntities_SendsCorrectJSON(t *testing.T) {
+	var receivedBatch EntitiesBatch
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.Header.Get("X-Api-Key") != "test-key" {
+			t.Errorf("X-Api-Key = %s, want test-key", r.Header.Get("X-Api-Key"))
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("Content-Type = %s, want application/json", r.Header.Get("Content-Type"))
+		}
+		json.NewDecoder(r.Body).Decode(&receivedBatch)
+
+		resp := entitiesIngestResponse{Received: 3, Inserted: 3, ServerID: "test-server-id"}
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	logger := testLogger()
+	s := NewSender(server.URL, "test-key", logger)
+
+	batch := EntitiesBatch{
+		ServerID: "test-server-id",
+		TS:       time.Now().UTC(),
+		Processes: []ProcessState{
+			{Name: "nginx", Cmdline: "nginx: master process", State: "running"},
+			{Name: "redis", Cmdline: "redis-server *:6379", State: "unknown"},
+		},
+		Services: []ServiceState{
+			{Name: "nginx", State: "running"},
+			{Name: "redis", State: "stopped"},
+		},
+	}
+
+	err := s.SendEntities(context.Background(), batch)
+	if err != nil {
+		t.Fatalf("SendEntities() error: %v", err)
+	}
+
+	if receivedBatch.ServerID != "test-server-id" {
+		t.Errorf("received ServerID = %q, want test-server-id", receivedBatch.ServerID)
+	}
+	if len(receivedBatch.Processes) != 2 {
+		t.Errorf("received %d processes, want 2", len(receivedBatch.Processes))
+	}
+	if len(receivedBatch.Services) != 2 {
+		t.Errorf("received %d services, want 2", len(receivedBatch.Services))
+	}
+	if receivedBatch.Processes[0].Name != "nginx" {
+		t.Errorf("process[0].Name = %q, want nginx", receivedBatch.Processes[0].Name)
+	}
+	if receivedBatch.Processes[0].State != "running" {
+		t.Errorf("process[0].State = %q, want running", receivedBatch.Processes[0].State)
+	}
+	if receivedBatch.Services[0].State != "running" {
+		t.Errorf("service[0].State = %q, want running", receivedBatch.Services[0].State)
+	}
+	if receivedBatch.Services[1].State != "stopped" {
+		t.Errorf("service[1].State = %q, want stopped", receivedBatch.Services[1].State)
+	}
+}
+
+func TestSender_SendEntities_RetriesOnFailure(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(entitiesIngestResponse{Received: 1, Inserted: 1})
+	}))
+	defer server.Close()
+
+	logger := testLogger()
+	s := NewSender(server.URL, "test-key", logger)
+	s.SetBackoff(&testBackoff{delays: []time.Duration{10 * time.Millisecond, 10 * time.Millisecond}})
+
+	batch := EntitiesBatch{ServerID: "test", Processes: []ProcessState{{Name: "nginx", State: "running"}}, Services: []ServiceState{{Name: "nginx", State: "running"}}}
+	err := s.SendEntities(context.Background(), batch)
+	if err != nil {
+		t.Fatalf("SendEntities() error: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("attempts = %d, want 2", attempts)
+	}
+}
+
 func TestSender_Register_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

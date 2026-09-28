@@ -60,3 +60,4 @@ go test ./...
 
 - Disco hardcodeado al mount `/` (no configurable aún).
 - Servicios/procesos, auto-restart y jobs: meses 3-4 del roadmap (`propuesta.md` §7).
+- **Servicios (systemd)**: la recolección de servicios usando `gopsutil/host.Services()` es solo Linux; en Windows/macOS retorna lista vacía sin error (gopsutil v3 no expone `host.Services()` en todas las plataformas/versiones).

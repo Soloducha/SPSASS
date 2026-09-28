@@ -34,7 +34,7 @@ curl http://localhost:8000/healthz
 | Servicio | Puerto | Descripción |
 |----------|--------|-------------|
 | API (FastAPI) | 8000 | Backend principal + docs en `/docs` |
-| Web (Next.js 16) | 3000 | Dashboard v0.1 (SSR); consola de alertas pendiente |
+| Web (Next.js 16) | 3000 | Dashboard (SSR) + consola de alertas (overview, reglas CRUD, acuse/resolución) |
 | PostgreSQL + TimescaleDB | 5432 | Base de datos principal |
 | Redis | 6379 | Broker + cache |
 | Worker (arq) | — | Background: rollups, evaluación y entrega de alertas (crons de 1 minuto) |
@@ -82,7 +82,7 @@ docker compose down -v
 | `GET` | `/api/v1/dashboard/overview` | JWT — estado agregado y métricas recientes |
 | `GET`/`POST` | `/api/v1/alerts/rules` | JWT — reglas de alerta (CRUD) |
 | `PATCH`/`DELETE` | `/api/v1/alerts/rules/{rule_id}` | JWT — editar / eliminar regla |
-| `GET` | `/api/v1/alerts` | JWT — alertas recientes/activas |
+| `GET` | `/api/v1/alerts` | JWT — alertas con filtros (`status`, `severity`, `rule_id`) |
 | `POST` | `/api/v1/alerts/{alert_id}/ack`, `/resolve` | JWT — acuse / resolución |
 | `GET` | `/healthz`, `/readyz` | — |
 
@@ -106,7 +106,7 @@ Swagger UI: `http://localhost:8000/docs` (solo dev).
 | `SMTP_FROM` | Remitente (vacío = email deshabilitado) |
 | `SMTP_STARTTLS` | `true`/`false` (default `true`) |
 
-Consulta de alertas: `GET /api/v1/alerts` + acuse (`ack`) y resolución (`resolve`) según severidad. UI web de alertas: pendiente (próximo feature).
+Consulta de alertas: `GET /api/v1/alerts` + acuse (`ack`) y resolución (`resolve`) según severidad. UI web de alertas: **shipped** — overview en `/alertas`, reglas CRUD en `/alertas/reglas` (crear, editar, eliminar con diálogo accesible) y acuse/resolución por fila.
 
 ---
 
@@ -137,7 +137,7 @@ SPSAAS/
 │   ├── internal/
 │   ├── go.mod
 │   └── README.md
-└── web/                            # Next.js 16 (dashboard v0.1 SSR; consola de alertas pendiente)
+└── web/                            # Next.js 16 (dashboard SSR + consola de alertas: overview, reglas, edición)
     ├── src/app/
     ├── package.json
     └── Dockerfile
@@ -152,12 +152,15 @@ SPSAAS/
 - [`odd/tasks/`](odd/tasks/) — Feature documents por slice:
   - [`fundaciones.md`](odd/tasks/fundaciones.md) — Mes 1: base del monorepo
   - [`mes2-agente-ingesta.md`](odd/tasks/mes2-agente-ingesta.md) — Mes 2: agente Go + API de ingesta
+  - [`rollups-dashboard.md`](odd/tasks/rollups-dashboard.md) — Rollups de métricas + dashboard
   - [`mes3-alertas.md`](odd/tasks/mes3-alertas.md) — Mes 3: alert engine + API de reglas
   - [`alert-delivery.md`](odd/tasks/alert-delivery.md) — Entrega de alertas (canales webhook/email + runner)
   - [`hardening-ci-rls.md`](odd/tasks/hardening-ci-rls.md) — Hardening CI + RLS
   - [`quality-gate.md`](odd/tasks/quality-gate.md) — Gate de calidad (mypy 0 + ruff pragmático)
   - [`review-followups.md`](odd/tasks/review-followups.md) — Follow-ups de la review quality-gate
   - [`next16-web.md`](odd/tasks/next16-web.md), [`deps-refresh.md`](odd/tasks/deps-refresh.md) — Web Next 16 + refresh de dependencias
+  - [`alert-web-ui.md`](odd/tasks/alert-web-ui.md) — UI web de alertas (overview, reglas, edición, accesibilidad)
+  - [`alert-timestamp-timezone-drift.md`](odd/tasks/alert-timestamp-timezone-drift.md) — Fix de timezone en timestamps de alertas
 - Sub-READMEs: [`api/README.md`](api/README.md), [`agent/README.md`](agent/README.md), [`web/README.md`](web/README.md)
 
 ---
@@ -191,7 +194,7 @@ go vet ./...
 go test ./...
 ```
 
-Baseline API: **117 passed, 1 skipped, 1 xfailed, 2 xpass pre-existentes** (no tocar).
+Baseline API: **120 passed, 1 skipped, 1 xfailed, 2 xpassed pre-existentes** (no tocar) — verificado 2026-09-28.
 
 ---
 

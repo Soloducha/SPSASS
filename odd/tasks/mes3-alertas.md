@@ -1,8 +1,8 @@
 # Mes 3 — Alertas
 
-**Branch**: `feat/mes3-alertas`
+**Branch**: `main` (`e1bc567`) — feature shipped
 **Fecha**: 2026-09-24
-**Estado**: en progreso
+**Estado**: completado
 
 ## Objetivo
 
@@ -56,30 +56,30 @@ motor que las use.
 ## Checklist
 
 ### T1 — Motor de evaluación (worker)
-- [ ] `api/app/workers/alerts.py`: `evaluate_alerts(session) -> int`
-  - [ ] Leer reglas activas de todos los tenants.
-  - [ ] Para cada regla SERVER: resolver targets (entity_id o todos sus servers).
-  - [ ] Query de métricas del window `duration_s`; condición `all(operador(value, threshold))`.
-  - [ ] Disparo: crear `Alert` (sin duplicar si hay OPEN/ACKNOWLEDGED) + `AlertDelivery`s stub.
-  - [ ] Resolución: cerrar alertas OPEN/ACKNOWLEDGED cuando la condición deja de cumplirse.
+- [x] `api/app/workers/alerts.py`: `evaluate_alerts(session) -> int`
+  - [x] Leer reglas activas de todos los tenants.
+  - [x] Para cada regla SERVER: resolver targets (entity_id o todos sus servers).
+  - [x] Query de métricas del window `duration_s`; condición `all(operador(value, threshold))`.
+  - [x] Disparo: crear `Alert` (sin duplicar si hay OPEN/ACKNOWLEDGED) + `AlertDelivery`s stub.
+  - [x] Resolución: cerrar alertas OPEN/ACKNOWLEDGED cuando la condición deja de cumplirse.
 
 ### T2 — Cron del worker
-- [ ] Job `evaluate_alerts` cada minuto en `api/app/workers/main.py` (func + cron `alert-eval-1m`).
+- [x] Job `evaluate_alerts` cada minuto en `api/app/workers/main.py` (func + cron `alert-eval-1m`).
 
 ### T3 — API CRUD de reglas
-- [ ] Schemas en `api/app/api/v1/schemas.py` (regla create/update/response).
-- [ ] `api/app/repositories/alert.py`: `AlertRuleRepository` + `AlertRepository` (patrón TenantScopedRepository).
-- [ ] `api/app/api/v1/alerts.py`: router `/api/v1/alerts` con:
-  - [ ] `GET /rules`, `POST /rules`, `GET /rules/{id}`, `PATCH /rules/{id}`, `DELETE /rules/{id}`.
-- [ ] Registrar router en `api/app/main.py`.
+- [x] Schemas en `api/app/api/v1/schemas.py` (regla create/update/response).
+- [x] `api/app/repositories/alert.py`: `AlertRuleRepository` + `AlertRepository` (patrón TenantScopedRepository).
+- [x] `api/app/api/v1/alerts.py`: router `/api/v1/alerts` con:
+  - [x] `GET /rules`, `POST /rules`, `GET /rules/{id}`, `PATCH /rules/{id}`, `DELETE /rules/{id}`.
+- [x] Registrar router en `api/app/main.py`.
 
 ### T4 — API de alertas
-- [ ] `GET /api/v1/alerts` (filtros: status, severity, rule_id, limit).
-- [ ] `POST /api/v1/alerts/{id}/ack` y `POST /api/v1/alerts/{id}/resolve`.
+- [x] `GET /api/v1/alerts` (filtros: status, severity, rule_id, limit).
+- [x] `POST /api/v1/alerts/{id}/ack` y `POST /api/v1/alerts/{id}/resolve`.
 
 ### T5 — Tests y verificación
-- [ ] `api/tests/test_alerts.py`: disparo sostenido, no-dedup, resolución, ack/resolve, CRUD.
-- [ ] mypy 0, ruff 0, pytest completo verde.
+- [x] `api/tests/test_alerts.py`: disparo sostenido, no-dedup, resolución, ack/resolve, CRUD.
+- [x] mypy 0, ruff 0, pytest completo verde.
 - [ ] E2E manual contra Postgres real (opcional, si hay stack levantado).
 
 ## Delivery
@@ -87,7 +87,16 @@ motor que las use.
 - **Estrategia**: ask-on-risk (default).
 - **Forecast**: ~600-800 líneas (motor ~150, API ~250, tests ~250) → supera 400 → chained PRs.
 - **Chain strategy**: stacked-to-main (elegida por el usuario 2026-09-24). Cada PR mergea a main en orden.
-- **Conteo real (work-unit commits)**: 2631261 engine+cron = 243 líneas; ab60dbf API slice = 392 líneas; 927c135 tests = 999 líneas. Total ~1.634 líneas → **3 PRs stacked-to-main** sugeridos: (A) engine+cron, (B) API slice, (C) tests.
+- **Conteo real (work-unit commits)**: engine+cron = 243 líneas; API slice = 392 líneas; tests = 999 líneas. Total ~1.634 líneas → **3 PRs stacked-to-main** sugeridos: (A) engine+cron, (B) API slice, (C) tests.
+- **Estado de entrega**: la feature completa está en `main` (`e1bc567`). Commits vigentes verificados como ancestros de `main`:
+
+  | Slice | Commit | Subject |
+  | --- | --- | --- |
+  | A — engine+cron | `2631261` | motor de evaluación + cron `alert-eval-1m` |
+  | B — API slice | `900d80e` | `feat(api): add alert rules CRUD and alert lifecycle endpoints` |
+  | C — tests | `836dd39` | `test(api): add alert engine and lifecycle test suite (T5)` |
+
+  Los SHAs originales (`ab60dbf`, `927c135`) quedaron sin efecto: el rebase previo a la cadena de PRs los reescribió. El contenido aterrizó bajo los SHAs de la tabla; los originales no son ancestros de `main` y no deben citarse.
 
 ## Follow-ups del verificador independiente (T3/T4, no bloqueantes)
 

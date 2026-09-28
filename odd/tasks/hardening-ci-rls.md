@@ -2,6 +2,7 @@
 
 > Slice de cierre del mes 2: `Dockerfile.worker`/targets web pendientes (TODO #3) + RLS hardening postgres documentado en `mes2-agente-ingesta.md` y `rollups-dashboard.md`.
 > Estado base: `main` `b614fcf` (demo bajado, working tree limpio).
+> **Estado final: feature SHIPPED en `main` (`e1bc567`). Commits `72d55dd` (Dockerfiles unificados), `9d0b1ff` (borrado Dockerfile.worker), `d6e2a00` (RLS hardening + `set_config`) son ancestros de `main`.**
 
 ## Objetivo
 
@@ -54,4 +55,4 @@
 - [x] Migración 0006 aplicada idempotente (head); grants verificados en information_schema + pg_default_acl.
 - [x] `pytest` completo verde contra Postgres real (51 passed / 1 xfailed / 2 xpass) + test RLS demuestra aislamiento real.
 - [x] E2E: register/login/me/api-key/server/ingest/dashboard funcionan como app_user superuser bootstrap; 0 errores de permisos; worker rollups OK.
-- [ ] PR único abierto (sigue policy ordinaria: decisión del usuario).
+- [x] Entrega bajo policy ordinaria (era "PR único abierto", decidido por el usuario). **No quedó ningún PR abierto: el trabajo aterrizó directamente en `main` (`e1bc567`) junto con la cadena de alertas. Los commits `72d55dd` (Dockerfiles unificados), `9d0b1ff` (borrado de `api/Dockerfile.worker`) y `d6e2a00` (RLS hardening + `set_config`) están verificados como ancestros de `main`. No se cita número de PR porque no se verificó ninguno para este trabajo.**

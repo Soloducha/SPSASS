@@ -49,7 +49,7 @@ These replace any assumption derived from the env var name:
 | SMTP variables | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_STARTTLS` only |
 | Testing | TDD OFF — no strict config, no SDD init. Ordinary checks from `web/`: `pnpm lint`, `pnpm exec tsc --noEmit`, `pnpm build`. API tests only if backend changes. |
 | RDD | Clone-local OFF; do not start review or change it. |
-| Commits | Local commits authorized as ODD work units; push/PR not authorized. |
+| Commits | Local commits authorized as ODD work units; push/PR not authorized *at time of writing*. **Subsequently authorized and merged as PRs #17–#26.** |
 | Delivery | Strategy `ask-on-risk`; chain preference `stacked-to-main`. |
 
 ## API/UI Contracts
@@ -244,14 +244,12 @@ Measured as real net diffs between adjacent commits, not estimates. **The 2026-0
 | **#2** | T2 | **266** | ✅ | `#1` | Actions: ack/resolve Server Actions + accessible feedback |
 | **#3** | T3 | **1.633** | ❌ **4× over** | `#2` | Rules: `lib/api/rules.ts` + `dashboard.ts`, Server Actions, `page.tsx` + `RulesTable.tsx`, `nueva/*`. Documented split already exists in the T3 checklist |
 | **#4** | T1 fix + T4 + T5 | **1.494** | ❌ **3.7× over** | `#3` | ⚠️ **Was mis-estimated as ~250–400.** Really the T1 filter/pagination fix commit (`fix(web): make alert filters and pagination drive URL navigation`, +47/−54, 2 files) + T4 edit form + delete dialog + a11y/responsive + SMTP docs. Three unrelated concerns in one slice |
-| **#5** | timestamp fix | **298** | ✅ | `#4` | ⚠️ **Does not belong in this chain at all** — it is a P0 backend fix and must reach `main` independently and first |
+| **#5** | timestamp fix | **298** | ✅ | `#4` | ⚠️ **Does not belong in this chain at all** — it is a P0 backend fix and must reach `main` independently and first. Landed separately as PR #16 (merge `b1a2197`, commit `91e8633`) |
 | **#6** | click-through fix | **469** (56 code + 393 doc) | ⚠️ boundary | `#5` | Code is well under budget; the count is inflated by this tracking document. Recommend the doc lands with slice #1 or on its own |
 
 **Total against `main`: 4.465 authored lines across 7 slices.** Three slices are materially over budget: #1 (1.5×), #3 (4×) and #4 (3.7×).
 
-**Critical constraint, verified 2026-09-26: the branch has never been pushed.** `feat/alert-web-ui` has no upstream, and the only remote branch is `origin/main`. Local history rewriting is therefore free right now — no force-push, no shared history, no broken reviewers. This is the cheapest moment a split will ever be, and it stops being free the moment the first PR opens.
-
-**Delivery strategy**: `ask-on-risk` — confirmed with the user on 2026-09-25, who chose **`stacked-to-main`** when shown the over-budget branch. Chain strategy is cached. Whether to split #1/#3/#4 or record a `size:exception` is the user's call and is still open. No PR is authorized.
+**Historical note (2026-09-26):** At the time of writing, the branch had never been pushed — `feat/alert-web-ui` had no upstream, and the only remote branch was `origin/main`. The chain was subsequently delivered via `stacked-to-main` as 10 PRs (#17–#26), all merged to `main` (`e1bc567`). All merged chain branches were deleted. Local branches remaining: `main` and `agents/gentle-ai-integration`. Remote has only `main`.
 
 ## T1 evidence correction (2026-09-26) — three "build ✅" claims were FALSE
 
@@ -275,7 +273,7 @@ assignable to type '{ status?: ...; offset: number; limit: number; }'
 | T2 corrective commit (superseded, `fix(web): map alert action errors by HTTP status`) | `const initialParams: AlertListParams =` | ❌ | ✅ build |
 | T3 feature commit (`feat(web): add alert rules list and create flow`, +1628/−5, 11 files) | `const initialParams =` | ✅ | ✅ build |
 
-**Resolution.** Slice #1b passes `offset` and `limit` explicitly at the call site — `initialParams={{ ...initialParams, offset, limit }}` — which is also the honest statement of intent. The fix exists **only inside slice #1**, because that is where it is required for the slice to open with a green head. The T1 filter/pagination fix commit (`fix(web): make alert filters and pagination drive URL navigation`, +47/−54, 2 files) later rewrites that call site, so the final branch tree is byte-identical to the pre-split branch: `git diff backup/feat-alert-web-ui feat/alert-web-ui` is empty. The split is purely structural.
+**Resolution.** Slice #1b passes `offset` and `limit` explicitly at the call site — `initialParams={{ ...initialParams, offset, limit }}` — which is also the honest statement of intent. The fix exists **only inside slice #1**, because that is where it is required for the slice to open with a green head. The T1 filter/pagination fix commit (`fix(web): make alert filters and pagination drive URL navigation`, +47/−54, 2 files) later rewrites that call site, so the final branch tree is byte-identical to the pre-split branch. The backup branches (`backup/feat-alert-web-ui`, `backup/pre-slice1-split`) were deleted after the PRs merged; the split is purely structural.
 
 **Standing rule, added to Exact Checks: delete `web/.next` before believing any build result on this project.**
 
@@ -291,7 +289,7 @@ assignable to type '{ status?: ...; offset: number; limit: number; }'
 
 **Rebase outcome.** 14 downstream commits replayed onto the new base. One conflict, in `alertas/page.tsx`, on exactly the line the fix touches. Resolved toward the T1 filter/pagination fix commit's side — that commit legitimately deletes the dead `onFetch` prop and rewrites the call site, and the type error is already gone by then via the T3 feature commit (`feat(web): add alert rules list and create flow`, +1628/−5, 11 files). Final tree verified byte-identical to the pre-split backup. Branch tip: lint 0/0, build exit 0, 23 files, 4.473 insertions.
 
-Safety refs kept until the PRs open: tag `backup/pre-slice1-split`, branch `backup/feat-alert-web-ui`.
+The safety refs (`backup/pre-slice1-split` tag, `backup/feat-alert-web-ui` branch) were deleted after the PRs merged.
 
 ## Progress / Evidence Placeholders
 
@@ -549,22 +547,23 @@ This was investigated rather than merely deferred. `mapApiError` in `web/src/app
 ---
 
 ## Next Step
-**T1, T2, T3, T4 and T5 are all DONE and verified against a running stack, the whole feature has been clicked through in a real browser, fix 4 is browser-verified against a freshly created alert, and the delete dialog is now exercised and fixed.** Nothing is pushed and no PR exists.
+**T1, T2, T3, T4 and T5 are all DONE and verified against a running stack. The feature SHIPPED as 10 merged PRs (#17–#26) to `main` (`e1bc567`).** The chain was delivered via `stacked-to-main` strategy with one main commit per PR, in order:
+`e8c9e7e`(#17), `fcdea79`(#18), `ce72e67`(#19), `644e91a`(#20), `85e879a`(#21), `71949c3`(#22), `bf53fcb`(#23), `c953919`(#24), `f3c8aba`(#25), `e1bc567`(#26).
 
-What remains is entirely the user's call, in this order:
-1. **Push / open PRs** — still unauthorized. Slice #1 is three independently-green commits (109 / 444 / 42). Slices #3 (1.633) and #4 (1.494) carry a recorded `size:exception` by user decision; each needs that exception noted in its PR body. Safety refs `backup/feat-alert-web-ui` and `backup/alert-web-ui-pre-rebase` exist — the latter holds the pre-rebase tree, kept until the stacked PRs open — and should be deleted once the PRs are open.
-2. ~~**Land the timestamp fix independently and first.**~~ **Done — retract this step.** The P0 backend fix landed on `main` as PR #16 (merge `b1a2197`, commit `91e8633`). `main` can now create alerts and `ack`/`resolve` return 200, which is exactly what unblocked T2. It does not have to be sequenced ahead of this web chain any more, because it is already there.
+Total feature diff: 23 files, +4440/−25. All slice tips are confirmed ancestors of `origin/main`. The `5bd2017` slice 5 TypeScript compile fix (action state + submit handler typing) is on main; slice 5 went from 406 to 274 lines and no longer needs a `size:exception`. The alert timestamp/timezone fix landed independently as PR #16 (merge `b1a2197`, commit `91e8633`). Integrated-main gate after the merge: `tsc --noEmit`, lint and `pnpm run build` all exit 0 from a deleted `web/.next`; build emits `/`, `/alertas`, `/alertas/reglas`, `/alertas/reglas/[id]/editar`, `/alertas/reglas/nueva`.
 
-Unverified and honest, as of 2026-09-27:
-- Fix 5 (422 error mapping) is **not** browser-reproducible, and the reason is now understood rather than assumed: the client validates every constraint the API enforces, so no browser user can reach a 422 without a deliberate API break. Covered by code review plus the captured pre-fix crash evidence. See "Why fix 5 (the 422 branch) is still not browser-reproducible".
+All merged chain branches were deleted. Local branches remaining: `main` and `agents/gentle-ai-integration`. Remote has only `main`.
+
+Unverified and honest — still-open verification limits of a shipped feature:
+- Fix 5 (422 error mapping) is **not** browser-reproducible: the client validates every constraint the API enforces, so no browser user can reach a 422 without a deliberate API break. Covered by code review plus the captured pre-fix crash evidence. See "Why fix 5 (the 422 branch) is still not browser-reproducible".
 - **Programmatic** focus containment outside the dialog is not separately measured; only keyboard Tab / Shift+Tab traversal is claimed as evidence. See the honest limit noted under defect 3.
 - No screen reader was run. `aria-live` announcements were verified at the DOM level only (one persistent `role="status"` region; observable text transitions on toggle), and dialog focus order was verified by measuring `document.activeElement`. Actual spoken output remains unverified.
 - SMTP delivery: never exercised, and blocked on credentials plus explicit remote authorization.
-- Push and PRs: still unauthorized; the branch is local-only.
 
 ---
 
 *ODD feature document — `odd/tasks/alert-web-ui.md`*
-*Repository: spsaas | Branch: feat/alert-web-ui (local, unpushed) | Created: 2026-09-25 | Updated: 2026-09-27*
-*Commits (post-rebase, oldest first, subjects + measured sizes — SHAs deliberately not tracked because this branch will be rewritten by the upcoming stacked-PR slice split): `feat(web): add typed server-only client for the alerts API` (+109/−0, 1 file) → `feat(web): add read-only alerts overview page and table` (+444/−0, 2 files) → `feat(web): add app shell with header, navigation and footer` (+41/−1, 1 file) → `fix(api): derive alert acknowledgement actor from the authenticated user` (+109/−13, 3 files) → `feat(web): add alert acknowledge and resolve actions` (+259/−4, 4 files) → `fix(web): map alert action errors by HTTP status` (+68/−75, 3 files) → `feat(web): add alert rules list and create flow` (+1628/−5, 11 files) → `fix(web): make alert filters and pagination drive URL navigation` (+47/−54, 2 files) → `feat(web): add alert rule editing and accessible delete confirmation` (+1245/−101, 4 files) → `fix(web): guard dialog open call and use typed status in rule edit page` (+53/−31, 4 files) → `docs: document SMTP configuration for alert email delivery` (+10/−1, 1 file) → `docs: correct SMTP port comment to reflect STARTTLS-only support` (+1/−1, 1 file) → `docs: record the alert timestamp fix evidence and the T2 unblock` (+29/−8, 1 file) → `fix(web): correct client-reaction defects found in browser click-through` (+56/−20, 3 files) → `docs(odd): track the browser click-through and the six defects it found` (+393/−0, 1 file) → `docs(odd): correct the slice size table with measured diffs` (+19/−11, 1 file) → `docs(odd): record the slice #1 split and a false build claim it exposed` (+53/−6, 1 file) → `docs(odd): verify fix 4 against a fresh alert and retract four stale claims` (+62/−13, 1 file).*
-*State at handoff: **T1–T5 verified against a live stack; full UI clicked through in Chrome; all six click-through defects fixed; fix 4 browser-verified against a freshly created alert (`6fcc0fb4`, `41b29f74`, both left `acknowledged`); delete dialog exercised and its five defects fixed.** Suite green on the settled tree: 21 alerts tests, 120 full API suite, web lint 0/0, tsc 0, clean build from a deleted `.next`, 0 hydration/page errors, 0 failed requests. Token round trips (real 401, missing token) both correct; favicon served as `200 image/x-icon`; 422 branch proven unreachable through the UI. Chain strategy `stacked-to-main` confirmed. Nothing pushed. Next: decide the PR slices — the timestamp fix (`91e8633`) is already on `main` via PR #16 merge `b1a2197`.*
+*Repository: spsaas | Branch: `main` (`e1bc567`) — feature shipped via 10 stacked PRs #17–#26 | Created: 2026-09-25 | Updated: 2026-09-27*
+*Merged PR chain (oldest first, merge commit SHAs): `e8c9e7e`(#17) → `fcdea79`(#18) → `ce72e67`(#19) → `644e91a`(#20) → `85e879a`(#21) → `71949c3`(#22) → `bf53fcb`(#23) → `c953919`(#24) → `f3c8aba`(#25) → `e1bc567`(#26). All merged chain branches deleted; remote has only `main`.*
+*Feature work units (oldest first, subjects + measured net sizes — SHAs deliberately not tracked, per this document's convention against unstable SHA references): `feat(web): add typed server-only client for the alerts API` (+109/−0, 1 file) → `feat(web): add read-only alerts overview page and table` (+444/−0, 2 files) → `feat(web): add app shell with header, navigation and footer` (+41/−1, 1 file) → `fix(api): derive alert acknowledgement actor from the authenticated user` (+109/−13, 3 files) → `feat(web): add alert acknowledge and resolve actions` (+259/−4, 4 files) → `fix(web): map alert action errors by HTTP status` (+68/−75, 3 files) → `feat(web): add alert rules list and create flow` (+1628/−5, 11 files) → `fix(web): make alert filters and pagination drive URL navigation` (+47/−54, 2 files) → `feat(web): add alert rule editing and accessible delete confirmation` (+1245/−101, 4 files) → `fix(web): guard dialog open call and use typed status in rule edit page` (+53/−31, 4 files) → `docs: document SMTP configuration for alert email delivery` (+10/−1, 1 file) → `docs: correct SMTP port comment to reflect STARTTLS-only support` (+1/−1, 1 file) → `docs: record the alert timestamp fix evidence and the T2 unblock` (+29/−8, 1 file) → `fix(web): correct client-reaction defects found in browser click-through` (+56/−20, 3 files) → `docs(odd): track the browser click-through and the six defects it found` (+393/−0, 1 file) → `docs(odd): correct the slice size table with measured diffs` (+19/−11, 1 file) → `docs(odd): record the slice #1 split and a false build claim it exposed` (+53/−6, 1 file) → `docs(odd): verify fix 4 against a fresh alert and retract four stale claims` (+62/−13, 1 file).*
+*State at handoff: **Feature SHIPPED on `main` (`e1bc567`). T1–T5 verified against a live stack; full UI clicked through in Chrome; all six click-through defects fixed; fix 4 browser-verified against a freshly created alert (`6fcc0fb4`, `41b29f74`, both left `acknowledged`); delete dialog exercised and its five defects fixed.** Suite green on the settled tree: 21 alerts tests, 120 full API suite, web lint 0/0, tsc 0, clean build from a deleted `.next`, 0 hydration/page errors, 0 failed requests. Token round trips (real 401, missing token) both correct; favicon served as `200 image/x-icon`; 422 branch proven unreachable through the UI. Chain strategy `stacked-to-main` confirmed.*

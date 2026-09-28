@@ -1,6 +1,11 @@
 package collector
 
 import (
+	"bytes"
+	"os/exec"
+	"runtime"
+	"strings"
+
 	"github.com/shirou/gopsutil/v3/process"
 )
 
@@ -44,21 +49,118 @@ func (g *gopsutilProcessLister) ListProcesses() ([]ProcessInfo, error) {
 	return result, nil
 }
 
-// gopsutilServiceLister implements ServiceLister using gopsutil v3.
-type gopsutilServiceLister struct{}
+// systemdServiceLister implements ServiceLister using systemctl on Linux.
+type systemdServiceLister struct {
+	// cmdRunner allows injecting a fake command runner for tests.
+	cmdRunner func(name string, args ...string) ([]byte, error)
+}
+
+func (s *systemdServiceLister) ListServices() ([]ServiceInfo, error) {
+	// Only run on Linux; on other platforms return empty slice silently.
+	if runtime.GOOS != "linux" {
+		return []ServiceInfo{}, nil
+	}
+
+	runner := s.cmdRunner
+	if runner == nil {
+		runner = defaultCmdRunner
+	}
+
+	// systemctl list-units --type=service --all --no-legend --no-pager
+	// Output columns: UNIT LOAD ACTIVE SUB DESCRIPTION
+	out, err := runner("systemctl", "list-units", "--type=service", "--all", "--no-legend", "--no-pager")
+	if err != nil {
+		// On error (systemctl missing, permission denied, etc.), return empty slice
+		// to not break the collection tick. Log at caller level if needed.
+		return []ServiceInfo{}, nil
+	}
+
+	return parseSystemctlOutput(out), nil
+}
+
+// defaultCmdRunner is the production command runner using exec.Command.
+func defaultCmdRunner(name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	return out.Bytes(), err
+}
+
+// parseSystemctlOutput parses the output of `systemctl list-units --type=service --all --no-legend --no-pager`.
+// Expected columns: UNIT LOAD ACTIVE SUB DESCRIPTION
+// - UNIT: e.g., nginx.service (first token)
+// - LOAD: loaded/not-loaded (ignored)
+// - ACTIVE: active/inactive/failed/activating/deactivating
+// - SUB: running/exited/dead/failed/auto-restart/etc.
+// - DESCRIPTION: rest of line (may contain spaces)
+func parseSystemctlOutput(output []byte) []ServiceInfo {
+	lines := bytes.Split(output, []byte{'\n'})
+	result := make([]ServiceInfo, 0, len(lines))
+
+	for _, line := range lines {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+
+		// Split on whitespace; we need at least 4 fields: UNIT LOAD ACTIVE SUB
+		fields := bytes.Fields(line)
+		if len(fields) < 4 {
+			// Malformed line, skip it
+			continue
+		}
+
+		// Extract name from UNIT (e.g., "nginx.service" -> "nginx")
+		unitName := string(fields[0])
+		name := strings.TrimSuffix(unitName, ".service")
+
+		active := string(fields[2]) // ACTIVE column
+		sub := string(fields[3])    // SUB column
+
+		state := mapSystemdState(active, sub)
+
+		result = append(result, ServiceInfo{
+			Name:  name,
+			State: state,
+		})
+	}
+	return result
+}
+
+// mapSystemdState maps systemd ACTIVE+SUB to our internal state.
+// ACTIVE: active, inactive, failed, activating, deactivating
+// SUB: running, exited, dead, failed, auto-restart, etc.
+func mapSystemdState(active, sub string) string {
+	switch {
+	case active == "active" && sub == "running":
+		return "running"
+	case active == "inactive" && sub == "dead":
+		return "stopped"
+	case active == "failed":
+		return "failed"
+	default:
+		return "unknown"
+	}
+}
+
+// gopsutilServiceLister is kept for backward compatibility but is deprecated.
+// It now wraps the systemd lister.
+type gopsutilServiceLister struct {
+	systemd *systemdServiceLister
+}
 
 func (g *gopsutilServiceLister) ListServices() ([]ServiceInfo, error) {
-	// NOTE: host.Services() was added in gopsutil v3.22.0+ but may not be available
-	// in all versions. The current version (v3.24.5) in this project's go.mod
-	// does not export it. On non-Linux or when unavailable, return empty slice.
-	// A future update to gopsutil or a platform-specific implementation can add support.
-	// For now, return empty slice with no error to not break the collection tick.
-	return []ServiceInfo{}, nil
+	if g.systemd == nil {
+		g.systemd = &systemdServiceLister{}
+	}
+	return g.systemd.ListServices()
 }
 
 // init registers the gopsutil implementations as default.
 // This runs automatically when the package is imported.
 func init() {
 	defaultProcessLister = &gopsutilProcessLister{}
-	defaultServiceLister = &gopsutilServiceLister{}
+	defaultServiceLister = &gopsutilServiceLister{systemd: &systemdServiceLister{}}
 }

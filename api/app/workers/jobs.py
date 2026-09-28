@@ -16,7 +16,7 @@ from croniter import croniter
 from sqlalchemy import select
 
 from app.core.logging import get_logger
-from app.models.alert import Alert, AlertSeverity
+from app.models.alert import Alert, AlertDelivery, AlertSeverity, AlertStatus
 from app.models.job import Job, JobKind, JobRun, JobStatus
 
 if TYPE_CHECKING:
@@ -106,7 +106,7 @@ async def _run_job_command(
     return exit_code, output_tail, timed_out
 
 
-def _create_failure_alert(
+async def _create_failure_alert(
     session: AsyncSession,
     job: Job,
     run: JobRun,
@@ -115,26 +115,53 @@ def _create_failure_alert(
 ) -> Alert | None:
     """Crea una alerta por fallo de job y sus deliveries pendientes.
 
-    NOTA: Alert.rule_id es NOT NULL en el modelo, pero los fallos de job
-    no derivan de una AlertRule. Como workaround, creamos la alerta sin
-    rule_id (lo cual fallaría en DB) — el modelo actual NO permite rule_id
-    nulo. Revisar migración futura si se quiere separar alertas de job.
-    Por ahora, NO creamos alerta si rule_id es requerido y no hay regla.
+    Como rule_id ahora es nullable, podemos crear alertas de job failure
+    directamente sin una AlertRule asociada. El value_at_trigger se setea
+    a float(exit_code or 0.0) ya que no hay métrica de comparación.
+
+    Los canales de entrega se toman de job.config.get("channels", {}).
+    Si no hay canales configurados, la alerta se crea sin deliveries
+    (visible en API/UI para que el operador la vea).
     """
-    # Dado que Alert.rule_id es NOT NULL, no podemos crear alerta directa
-    # sin una regla asociada. Esta limitación del modelo se documenta aquí.
-    # Para T2, logueamos el intento y saltamos la creación de alerta.
-    logger.warning(
-        "job_failure_alert_skipped_no_rule",
+    now = datetime.now(UTC)
+    exit_code = run.exit_code
+    value_at_trigger = float(exit_code if exit_code is not None else 0.0)
+
+    alert = Alert(
+        rule_id=None,  # Job failure alerts no tienen AlertRule asociada
+        server_id=job.server_id,
+        tenant_id=job.tenant_id,
+        severity=severity,
+        status=AlertStatus.OPEN,
+        message=message,
+        triggered_at=now,
+        value_at_trigger=value_at_trigger,
+    )
+    session.add(alert)
+    await session.flush()
+
+    # Crear AlertDelivery pendientes por cada canal en job.config.channels
+    channels = job.config.get("channels", {}) if job.config else {}
+    for channel in sorted(set(channels.keys())):
+        delivery = AlertDelivery(
+            alert_id=alert.id,
+            channel=channel,
+            status="pending",
+            tenant_id=job.tenant_id,
+        )
+        session.add(delivery)
+
+    logger.info(
+        "job_failure_alert_created",
+        alert_id=str(alert.id),
         job_id=str(job.id),
         job_name=job.name,
         run_id=str(run.id),
         tenant_id=str(job.tenant_id),
-        message=message,
+        severity=severity.value,
+        channels=list(channels.keys()),
     )
-    # Retornamos None para indicar que no se creó alerta
-    # (El caller debe manejar esto)
-    return None
+    return alert
 
 
 async def _process_job(session: AsyncSession, job: Job, now: datetime) -> _JobRunResult | None:
@@ -220,19 +247,19 @@ async def _process_job(session: AsyncSession, job: Job, now: datetime) -> _JobRu
 
     # Crear alerta si fallo y alert_on_fail
     if run.status in ("failed", "timeout") and job.alert_on_fail:
-        # NOTA: Alert.rule_id es NOT NULL, no podemos crear alerta directa
-        # sin una regla. Ver _create_failure_alert para detalles.
-        # Por ahora solo logueamos.
-        logger.warning(
-            "job_failure_alert_not_created_rule_id_required",
-            job_id=str(job.id),
-            job_name=job.name,
-            run_id=str(run.id),
-            tenant_id=str(job.tenant_id),
-            status=run.status,
-            exit_code=exit_code,
-        )
-        alert_created = False
+        # Construir mensaje según el tipo de fallo
+        if timed_out:
+            message = f"Job '{job.name}' timed out after {job.timeout_s}s"
+        else:
+            message = f"Job '{job.name}' failed (exit={exit_code})"
+
+        # Crear alerta y deliveries
+        alert = await _create_failure_alert(session, job, run, message)
+        if alert:
+            alert_created = True
+            # Marcar que ya se alertó para idempotencia (evita duplicados si se re-procesa)
+            run.run_metadata = {**run.run_metadata, "alerted": True}
+            await session.flush()
 
     await session.flush()
     logger.info(

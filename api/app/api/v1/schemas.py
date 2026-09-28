@@ -192,7 +192,7 @@ class AlertResponse(BaseModel):
 
     id: UUID
     tenant_id: UUID
-    rule_id: UUID
+    rule_id: UUID | None
     server_id: UUID | None
     severity: AlertSeverity
     status: AlertStatus

@@ -82,8 +82,8 @@ class Alert(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
 
     __tablename__ = "alerts"
 
-    rule_id: Mapped[UUID] = mapped_column(
-        ForeignKey("alert_rules.id", ondelete="CASCADE"), nullable=False, index=True
+    rule_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("alert_rules.id", ondelete="CASCADE"), nullable=True, index=True
     )
     server_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("servers.id", ondelete="SET NULL"), nullable=True, index=True

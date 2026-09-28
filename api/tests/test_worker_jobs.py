@@ -266,7 +266,7 @@ class TestRunDueJobs:
         assert run is not None
         assert run.status == "timeout"
         assert run.exit_code is None
-        assert run.run_metadata == {"timed_out": True}
+        assert run.run_metadata == {"timed_out": True, "alerted": True}
 
     @pytest.mark.asyncio
     async def test_fallo_con_alert_on_fail_loguea_intento_alerta(

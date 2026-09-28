@@ -1,8 +1,8 @@
 # Follow-ups review quality-gate — investigación de causalidad y fixes
 
-> Estado: **cerrado** — ambos fixes verificados (mypy/ruff/pytest + verifier independiente pass) y commiteados.
-> Commit work-unit: `51a3904` en `feature/review-followups` (base `main`, no mergeado — decisión del usuario al volver).
-> Branch: `feature/review-followups`
+> Estado: **cerrado y mergeado a `main`** — ambos fixes verificados (mypy/ruff/pytest + verifier independiente pass) y commiteados.
+> Commit work-unit: `51a3904` en `feature/review-followups` (base `main`). **Merge posterior a `main` verificado: `c5f89aa` ("Merge branch 'feature/review-followups'") es ancestro de `origin/main` — el branch fue mergeado tras la decisión inicial de no hacerlo.**
+> Branch: `feature/review-followups` (mergeada; eliminada)
 > Origen: review nativa RDD de `97fa18d` (lineage `review-488b6c35560cba57`), escalada a `stop` por causalidad desconocida. RDD desactivado clone-scoped (decisión del usuario); delivery por política ordinaria.
 
 ## Investigación de causalidad (completada — 2026-09-22)

@@ -1,4 +1,5 @@
 """Modelo Process."""
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -24,6 +25,9 @@ class Process(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     expected_count: Mapped[int] = mapped_column(default=1, nullable=False)
     auto_restart: Mapped[bool] = mapped_column(default=False, nullable=False)
     config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # Estado derivado (actualizado vía ingest/entities)
+    last_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    last_checked_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     # Relaciones
     server: Mapped["Server"] = relationship("Server", back_populates="processes", lazy="selectin")

@@ -416,3 +416,41 @@ class JobListParams(BaseModel):
     status: JobStatus | None = None
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
+
+
+# ──────────────────────────────────────────────
+# Entity Ingest Schemas (T4)
+# ──────────────────────────────────────────────
+
+class EntityProcessItem(BaseModel):
+    """Proceso reportado por el agente."""
+
+    name: str = Field(min_length=1, max_length=255)
+    cmdline: str | None = None
+    state: str = Field(min_length=1)  # "running" | "unknown"
+
+
+class EntityServiceItem(BaseModel):
+    """Servicio reportado por el agente."""
+
+    name: str = Field(min_length=1, max_length=255)
+    state: str = Field(min_length=1)  # "running" | "stopped" | "failed" | "unknown"
+
+
+class EntityIngestPayload(BaseModel):
+    """Payload para ingesta de estado de entidades (procesos y servicios)."""
+
+    server_id: UUID
+    ts: datetime | None = None
+    processes: list[EntityProcessItem] = Field(default_factory=list)
+    services: list[EntityServiceItem] = Field(default_factory=list)
+
+
+class EntitiesIngestResponse(BaseModel):
+    """Response de ingesta de estado de entidades."""
+
+    received_processes: int
+    received_services: int
+    matched_processes: int
+    matched_services: int
+    server_id: UUID

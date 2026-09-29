@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import JSON, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
@@ -27,7 +27,7 @@ class Process(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     # Estado derivado (actualizado vía ingest/entities)
     last_count: Mapped[int] = mapped_column(default=0, nullable=False)
-    last_checked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relaciones
     server: Mapped["Server"] = relationship("Server", back_populates="processes", lazy="selectin")

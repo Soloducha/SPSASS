@@ -2,7 +2,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, String
+from sqlalchemy import JSON, DateTime, String
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,14 +31,14 @@ class Report(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
 
     __tablename__ = "reports"
 
-    period_start: Mapped[datetime] = mapped_column(nullable=False)
-    period_end: Mapped[datetime] = mapped_column(nullable=False)
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     type: Mapped[ReportType] = mapped_column(
         SAEnum(ReportType, name="report_type", values_callable=lambda e: [m.value for m in e]),
         nullable=False,
     )
     payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    generated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[ReportStatus] = mapped_column(
         SAEnum(ReportStatus, name="report_status", values_callable=lambda e: [m.value for m in e]),
         default=ReportStatus.PENDING,

@@ -114,6 +114,7 @@ El Mes 3 probó que un job cron caído a las 3 AM nadie lo ve hasta la mañana (
 - T6 agregará un work-unit más; ese sí va por el flujo normal assess → review nativo.
 - El branch acumulado **no es candidato válido** (el candidato es un work-unit commit o un PR slice, nunca el branch entero), aunque `assess --base-ref main` devuelva `high_risk`.
 
+## Rutas por task
 
 | Task | Ruta | Trigger |
 |------|------|---------|

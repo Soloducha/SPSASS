@@ -1,6 +1,6 @@
 # Feature — mes 4: Procesos + Servicios + Jobs v1 (monitorear + alertar + runner)
 
-> Feature document ODD. Estado: **EN PLANIFICACIÓN** (exploración completada 2026-09-28).
+> Feature document ODD. Estado: **EN IMPLEMENTACIÓN** — T1–T5 cerradas y verificadas (2026-09-28); T6 (E2E real) pendiente. El branch `feat/mes4-01-crud` acumula 5.964 líneas autoradas y **todavía no fue pusheado ni entregado**.
 >
 > Referencia roadmap: `propuesta.md` línea 155 → **Mes 4 = Procesos + jobs**: servicios/procesos con auto-restart, job monitor cron/batch, detección de errores, canal WhatsApp.
 >
@@ -63,13 +63,16 @@ El Mes 3 probó que un job cron caído a las 3 AM nadie lo ve hasta la mañana (
 
 ## Acceptance Criteria
 
-- [ ] API: CRUD de services/processes/jobs funciona con tenant-scoping; key de tenant A NO ve/edita entidades de tenant B (404).
-- [ ] Un job cron fallido genera `JobRun(failed/timeout)` + alerta + delivery pending.
-- [ ] Un proceso cuyo pattern deja de matchear (o cae bajo `expected_count`) genera alerta.
-- [ ] Un servicio cuyo estado reportado difiere de `desired_state` genera alerta.
-- [ ] Las alertas SERVICE/PROCESS/JOB se resuelven cuando el estado vuelve a lo esperado.
-- [ ] `mypy app` = 0; `ruff check app` = 0; `pytest` verde (sin xpass nuevos) en `api/`.
-- [ ] `go vet ./...` + `go test ./...` verdes en `agent/`.
+> Marcado contra la suite automatizada de cada task. El **E2E real contra el stack Docker (delivery `pending→sent`, runner en vivo, migraciones aplicadas) NO está cubierto por estos checks** — es T6.
+
+- [x] API: CRUD de services/processes/jobs funciona con tenant-scoping; key de tenant A NO ve/edita entidades de tenant B (404). — `api/tests/test_processes_services_jobs.py`, 14 tests (T1 `ae5c66e`).
+- [x] Un job cron fallido genera `JobRun(failed/timeout)` + alerta + delivery pending. — `api/tests/test_worker_jobs.py`, 21 tests (T2 `a86f048` + fix `b6464e2`); delivery *pending* verificado en test, el envío real es T6.
+- [x] Un proceso cuyo pattern deja de matchear (o cae bajo `expected_count`) genera alerta. — `api/tests/test_alerts_entities.py` (T5 `2ae0689`).
+- [x] Un servicio cuyo estado reportado difiere de `desired_state` genera alerta. — `api/tests/test_alerts_entities.py` (T5 `2ae0689`).
+- [x] Las alertas SERVICE/PROCESS/JOB se resuelven cuando el estado vuelve a lo esperado. — `api/tests/test_alerts_entities.py`, incluye resolución JOB por fallo ya runner-alertado (T5 `2ae0689`).
+- [x] `mypy app` = 0; `ruff check app` = 0; `pytest` verde (sin xpass nuevos) en `api/`. — última corrida observada en T5 `2ae0689`: mypy 0, ruff limpio, **186 passed** + 2 fallos SMTP ambientales conocidos (`.env`).
+- [x] `go vet ./...` + `go test ./...` verdes en `agent/`. — última corrida observada en T3 `264ac20`.
+- [ ] **E2E real**: migraciones `0007`+`0008`+`0009` aplicadas en DB real; alerta + delivery `pending→sent`; resolución en vivo; runner ejecutando un job cron. → **T6**.
 
 ## Checks aplicables
 
@@ -83,8 +86,34 @@ El Mes 3 probó que un job cron caído a las 3 AM nadie lo ve hasta la mañana (
 - **T4 — nota de verificación**: 10 tests nuevos en `api/tests/test_ingest_entities.py`; 163 passed (2 SMTP ambientales conocidos por `.env`). Migración `0008` validada offline tras corregir `down_revision`. Pendiente aplicar `0007`+`0008` en DB real (T6).
 - **2026-09-28** — T5 `2ae0689` (branch `feat/mes4-01-crud`): alert engine multi-entidad SERVICE/PROCESS/JOB + migración `0009` (`Alert.target_entity_id`). 23 tests nuevos en `api/tests/test_alerts_entities.py`; 186 passed, 2 SMTP ambientales conocidos; mypy 0, ruff limpio; migraciones `0007`+`0008`+`0009` validadas offline, pendientes de aplicar en DB real (T6).
 - **Siguiente**: T6 — E2E real (stack Docker): aplicar migraciones, verificar alertas SERVICE/PROCESS/JOB + delivery + resolución de punta a punta.
+- **2026-09-29** — Merge de `main` al branch (`9e3e2e3`). `main` estaba **más adelantado que el branch** en este doc (`0735d58` cerró T3+T4 y `13964a2` cerró T5 directo en `main`, mientras el branch seguía con la copia de `ccfbe77`); conflicto resuelto tomando la versión de `main`, que subsume el `cff789b` del branch. Sin ese merge, "sincronizar el doc" habría duplicado trabajo ya hecho y generado conflicto en el PR.
 
-## Rutas por task
+## Delivery, slices y RDD
+
+**Estrategia**: `ask-on-risk` + chain `stacked-to-main` (decisión 6, confirmada en features previas). Delivery sigue política ordinaria del repo: push y PR son decisiones del usuario.
+
+**Forecast por work-unit (inserciones + borrados, generado excluido)** — medido sobre `main..feat/mes4-01-crud`:
+
+| Slice | Commits | Líneas | vs. presupuesto 400 |
+|-------|---------|--------|--------------------|
+| T1 CRUD | `ae5c66e` | 1.742 | excede ×4.4 |
+| T2 job runner | `a86f048`, `b6464e2` | 881 | excede ×2.2 |
+| T3 collectors | `6a324cc`, `264ac20` | 956 | excede ×2.4 |
+| T4 ingest | `46b5bd1` | 806 | excede ×2.0 |
+| T5 alert engine | `2ae0689` | 1.571 | excede ×3.9 |
+| T6 E2E | pendiente | — | — |
+| (docs) | `cff789b` | 8 | ok |
+
+**Hallazgo honesto**: con esta granularidad **ningún slice entra en el presupuesto de 400 líneas**. El grueso son tests legítimos (`test_processes_services_jobs.py` = 982 líneas, `test_alerts_entities.py` = 942). Opciones reales, sin recortes cosméticos: (a) `size:exception` por slice, (b) sub-slicing de los tests, o (c) un PR único con excepción. **Decisión pendiente del usuario** — el documento no la define.
+
+### Registro RDD (receipt-driven development)
+
+- Estado: **on** (decidido por `global`; el off previo estaba en `clone_local` y se limpió el 2026-09-29 con `review mode enable --scope clone`).
+- `gentle-ai review assess` mide el rango **base → HEAD**, no un commit suelto. Con HEAD en el merge, cada base devuelve la cola restante (5.899 → 4.157 → … → 1.586). Por lo tanto **la assessment de un slice solo es válida cuando el tip de ese slice ES el HEAD**; no se puede evaluar retroactivamente el branch acumulado.
+- Ningún work-unit de esta feature fue revisado nativamente todavía: se antecedentieron a la activación de RDD.
+- T6 agregará un work-unit más; ese sí va por el flujo normal assess → review nativo.
+- El branch acumulado **no es candidato válido** (el candidato es un work-unit commit o un PR slice, nunca el branch entero), aunque `assess --base-ref main` devuelva `high_risk`.
+
 
 | Task | Ruta | Trigger |
 |------|------|---------|

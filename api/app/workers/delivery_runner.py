@@ -41,7 +41,8 @@ async def deliver_alerts(session: AsyncSession) -> DeliveryRunSummary:
 
     Para cada delivery:
       - Resuelve alerta, regla y servidor (si aplica).
-      - Obtiene el canal y su configuración desde rule.channels.
+      - Obtiene la configuración del canal: primero desde delivery.config
+        (snapshot en creación), luego fallback a rule.channels si existe.
       - Despacha vía canal.send().
       - Actualiza status, external_ref, delivered_at, error.
     Commit único al final. Devuelve resumen sent/failed.
@@ -66,26 +67,31 @@ async def deliver_alerts(session: AsyncSession) -> DeliveryRunSummary:
             server = await session.get(Server, alert.server_id)
 
         channel_name = delivery.channel
-        channel_config = (rule.channels or {}).get(channel_name)
-
-        # Configuración de canal faltante en la regla
-        if channel_config is None:
-            delivery.status = "failed"
-            delivery.error = "config_missing: channel not configured in rule"
-            delivery.external_ref = None
-            delivery.delivered_at = None
-            summary = DeliveryRunSummary(sent=summary.sent, failed=summary.failed + 1)
-            logger.warning(
-                "delivery_failed",
-                delivery_id=str(delivery.id),
-                alert_id=str(alert.id),
-                channel=channel_name,
-                tenant_id=str(alert.tenant_id),
-                reason="config_missing",
-            )
-            continue
 
         try:
+            # Resolver configuración de canal: snapshot en delivery.config tiene prioridad,
+            # fallback a rule.channels para filas legacy (config=NULL) cuando rule existe.
+            channel_config = delivery.config
+            if channel_config is None and rule is not None:
+                channel_config = (rule.channels or {}).get(channel_name)
+
+            # Configuración de canal faltante (ni snapshot ni rule.channels)
+            if channel_config is None:
+                delivery.status = "failed"
+                delivery.error = "config_missing: channel not configured in rule"
+                delivery.external_ref = None
+                delivery.delivered_at = None
+                summary = DeliveryRunSummary(sent=summary.sent, failed=summary.failed + 1)
+                logger.warning(
+                    "delivery_failed",
+                    delivery_id=str(delivery.id),
+                    alert_id=str(alert.id),
+                    channel=channel_name,
+                    tenant_id=str(alert.tenant_id),
+                    reason="config_missing",
+                )
+                continue
+
             channel = get_channel(channel_name)
             external_ref = await channel.send(
                 alert=alert,

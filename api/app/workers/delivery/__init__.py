@@ -36,7 +36,7 @@ class DeliveryChannel(Protocol):
         self,
         *,
         alert: Alert,
-        rule: AlertRule,
+        rule: AlertRule | None,
         server: Server | None,
         channel_config: dict,
     ) -> str:
@@ -44,7 +44,8 @@ class DeliveryChannel(Protocol):
 
         Args:
             alert: The alert to deliver.
-            rule: The rule that triggered the alert.
+            rule: The rule that triggered the alert, or None for job-failure
+                alerts that have no associated AlertRule.
             server: The server associated with the alert, or None.
             channel_config: Channel-specific configuration from rule.channels.
 

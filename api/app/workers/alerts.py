@@ -90,23 +90,21 @@ async def _get_active_alert(
     Para SERVICE/PROCESS/JOB: usa target_entity_id + rule_id (server_id puede ser None).
     """
     if target_entity_id is not None:
-        result = await session.scalar(
+        return await session.scalar(  # type: ignore[no-any-return]
             select(Alert).where(
                 Alert.rule_id == rule_id,
                 Alert.target_entity_id == target_entity_id,
                 Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED]),
             )
         )
-        return result  # type: ignore[no-any-return]
     # Fallback para compatibilidad con alertas antiguas (SERVER sin target_entity_id)
-    result = await session.scalar(
+    return await session.scalar(  # type: ignore[no-any-return]
         select(Alert).where(
             Alert.rule_id == rule_id,
             Alert.server_id == server_id,
             Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED]),
         )
     )
-    return result  # type: ignore[no-any-return]
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +144,7 @@ async def _create_alert_and_deliveries(params: _AlertCreateParams) -> Alert:
             channel=channel,
             status="pending",
             tenant_id=params.tenant_id,
+            config=channels.get(channel),
         )
         params.session.add(delivery)
 

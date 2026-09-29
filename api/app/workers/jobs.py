@@ -148,6 +148,7 @@ async def _create_failure_alert(
             channel=channel,
             status="pending",
             tenant_id=job.tenant_id,
+            config=channels.get(channel),
         )
         session.add(delivery)
 

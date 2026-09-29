@@ -7,14 +7,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from app.main import app
-from app.models.job import Job, JobKind, JobRun, JobStatus
-from app.models.process import Process
+from app.models.job import Job, JobKind, JobRun
 from app.models.server import Server, ServerStatus
-from app.models.service import Service, ServiceState
-from app.models.tenant import Tenant
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -825,7 +820,6 @@ class TestJobRuns:
         tenant_id = await _get_tenant_id_from_token(client, token)
 
         server = await _create_server_via_db(db_session, UUID(tenant_id))
-        server_id = str(server.id)
 
         # Crear job en BD directamente
         job_obj = Job(
@@ -899,7 +893,6 @@ class TestJobRuns:
         tenant_id = await _get_tenant_id_from_token(client, token)
 
         server = await _create_server_via_db(db_session, UUID(tenant_id))
-        server_id = str(server.id)
 
         job_obj = Job(
             tenant_id=UUID(tenant_id),

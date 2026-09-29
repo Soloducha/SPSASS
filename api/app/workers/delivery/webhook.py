@@ -31,7 +31,7 @@ class WebhookChannel:
         self,
         *,
         alert: Alert,
-        rule: AlertRule,
+        rule: AlertRule | None,
         server: Server | None,
         channel_config: dict,
     ) -> str:
@@ -39,7 +39,8 @@ class WebhookChannel:
 
         Args:
             alert: The alert to deliver.
-            rule: The rule that triggered the alert.
+            rule: The rule that triggered the alert, or None for job-failure
+                alerts that have no associated AlertRule.
             server: The server associated with the alert, or None.
             channel_config: Must contain "url" key; optional "headers" dict.
 
@@ -110,9 +111,21 @@ class WebhookChannel:
             reason="http_error",
         )
 
-    def _build_payload(self, alert: Alert, rule: AlertRule, server: Server | None) -> dict:
+    def _build_payload(self, alert: Alert, rule: AlertRule | None, server: Server | None) -> dict:
         """Build the JSON payload for the webhook."""
+        source = "job" if rule is None else "rule"
+        rule_block = None
+        if rule is not None:
+            rule_block = {
+                "id": str(rule.id),
+                "metric": rule.metric,
+                "operator": rule.operator.value,
+                "threshold": rule.threshold,
+                "duration_s": rule.duration_s,
+                "severity": rule.severity.value,
+            }
         return {
+            "source": source,
             "alert": {
                 "id": str(alert.id),
                 "severity": alert.severity.value,
@@ -121,14 +134,7 @@ class WebhookChannel:
                 "value_at_trigger": alert.value_at_trigger,
                 "triggered_at": alert.triggered_at.isoformat().replace("+00:00", "Z"),
             },
-            "rule": {
-                "id": str(rule.id),
-                "metric": rule.metric,
-                "operator": rule.operator.value,
-                "threshold": rule.threshold,
-                "duration_s": rule.duration_s,
-                "severity": rule.severity.value,
-            },
+            "rule": rule_block,
             "server": (
                 {
                     "id": str(server.id),

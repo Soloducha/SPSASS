@@ -6,28 +6,23 @@ concurrencia, alertas en fallo, tenant scoping.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from croniter import croniter
-
-from app.models.alert import Alert, AlertDelivery, AlertSeverity
 from app.models.job import Job, JobKind, JobRun, JobStatus
 from app.models.server import Server, ServerStatus
 from app.models.tenant import Tenant
-from app.workers.jobs import _is_cron_due, run_due_jobs
+from app.workers.jobs import _is_cron_due, _run_job_command, run_due_jobs
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 
 # ──────────────────────────────────────────────
 # Helpers de seed
 # ──────────────────────────────────────────────
 
-async def _seed_tenant_server_job(
+async def _seed_tenant_server_job(  # noqa: PLR0913 - test seed helper needs one knob per job field
     session: AsyncSession,
     *,
     kind: JobKind = JobKind.CRON,
@@ -398,8 +393,6 @@ class TestRunJobCommandIntegration:
     @pytest.mark.asyncio
     async def test_timeout_real_con_sleep_corto(self) -> None:
         """Comando sleep real con timeout muy corto → timeout detectado."""
-        from app.workers.jobs import _run_job_command
-
         # sleep 10 con timeout 1 segundo → debe hacer timeout
         exit_code, output_tail, timed_out = await _run_job_command(
             "python -c \"import time; time.sleep(10)\"",
@@ -413,8 +406,6 @@ class TestRunJobCommandIntegration:
     @pytest.mark.asyncio
     async def test_comando_exitoso_real(self) -> None:
         """Comando echo real → exit_code=0."""
-        from app.workers.jobs import _run_job_command
-
         exit_code, output_tail, timed_out = await _run_job_command(
             "echo 'hello world'",
             timeout_s=5,
@@ -427,8 +418,6 @@ class TestRunJobCommandIntegration:
     @pytest.mark.asyncio
     async def test_comando_fallido_real(self) -> None:
         """Comando exit 1 real → exit_code=1."""
-        from app.workers.jobs import _run_job_command
-
         exit_code, output_tail, timed_out = await _run_job_command(
             "exit 2",
             timeout_s=5,

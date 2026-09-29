@@ -24,7 +24,7 @@ class EmailChannel:
         self,
         *,
         alert: Alert,
-        rule: AlertRule,
+        rule: AlertRule | None,
         server: Server | None,
         channel_config: dict,
     ) -> str:
@@ -32,7 +32,8 @@ class EmailChannel:
 
         Args:
             alert: The alert to deliver.
-            rule: The rule that triggered the alert.
+            rule: The rule that triggered the alert, or None for job-failure
+                alerts that have no associated AlertRule.
             server: The server associated with the alert, or None.
             channel_config: Must contain "to" key with list of email addresses.
 
@@ -93,7 +94,7 @@ class EmailChannel:
     def _build_message(
         self,
         alert: Alert,
-        rule: AlertRule,
+        rule: AlertRule | None,
         server: Server | None,
         to_emails: list[str],
         settings: Settings,
@@ -102,9 +103,17 @@ class EmailChannel:
         msg = EmailMessage()
         msg["From"] = settings.SMTP_FROM
         msg["To"] = ", ".join(to_emails)
+
+        # Subject line: use rule.metric if available, otherwise alert message (job failure)
+        if rule is not None:
+            subject_metric = rule.metric
+            subject_target = server.hostname if server else str(rule.id)
+        else:
+            subject_metric = "Job Failure"
+            subject_target = server.hostname if server else "unknown"
         msg["Subject"] = (
             f"[SPSAAS] ALERT {alert.severity.value.upper()} "
-            f"{rule.metric} on {server.hostname if server else rule.id}"
+            f"{subject_metric} on {subject_target}"
         )
 
         triggered_at_iso = alert.triggered_at.isoformat().replace("+00:00", "Z")
@@ -117,26 +126,35 @@ class EmailChannel:
                 f"  OS: {server.os or 'N/A'}",
             ]
 
-        body = "\n".join(
+        body_lines = [
+            "SPSAAS Alert Notification",
+            "=" * 40,
+            "",
+            f"Alert ID: {alert.id}",
+            f"Severity: {alert.severity.value}",
+            f"Status: {alert.status.value}",
+            f"Message: {alert.message}",
+            f"Value at Trigger: {alert.value_at_trigger}",
+            f"Triggered At: {triggered_at_iso}",
+            "",
+        ]
+
+        if rule is not None:
+            body_lines.extend(
+                [
+                    "Rule:",
+                    f"  ID: {rule.id}",
+                    f"  Metric: {rule.metric}",
+                    f"  Operator: {rule.operator.value}",
+                    f"  Threshold: {rule.threshold}",
+                    f"  Duration: {rule.duration_s}s",
+                    f"  Severity: {rule.severity.value}",
+                    "",
+                ]
+            )
+
+        body_lines.extend(
             [
-                "SPSAAS Alert Notification",
-                "=" * 40,
-                "",
-                f"Alert ID: {alert.id}",
-                f"Severity: {alert.severity.value}",
-                f"Status: {alert.status.value}",
-                f"Message: {alert.message}",
-                f"Value at Trigger: {alert.value_at_trigger}",
-                f"Triggered At: {triggered_at_iso}",
-                "",
-                "Rule:",
-                f"  ID: {rule.id}",
-                f"  Metric: {rule.metric}",
-                f"  Operator: {rule.operator.value}",
-                f"  Threshold: {rule.threshold}",
-                f"  Duration: {rule.duration_s}s",
-                f"  Severity: {rule.severity.value}",
-                "",
                 "Server:",
                 *server_lines,
                 "",
@@ -145,6 +163,7 @@ class EmailChannel:
             ]
         )
 
+        body = "\n".join(body_lines)
         msg.set_content(body)
         return msg
 

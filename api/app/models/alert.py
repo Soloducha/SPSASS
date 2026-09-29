@@ -136,6 +136,7 @@ class AlertDelivery(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
         DateTime(timezone=True), nullable=True
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     # Relaciones
     alert: Mapped["Alert"] = relationship("Alert", back_populates="deliveries", lazy="selectin")

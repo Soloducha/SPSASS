@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.models.alert import AlertDelivery
+from app.models.alert import Alert, AlertDelivery, AlertRule
 from app.models.server import Server
 from app.workers.delivery import DeliveryError, get_channel
 
@@ -34,6 +34,50 @@ class DeliveryRunSummary:
     def total(self) -> int:
         """Total de deliveries procesados."""
         return self.sent + self.failed
+
+
+def _mark_failed(delivery: AlertDelivery, error: str) -> None:
+    """Marca un delivery como fallido y limpia sus campos de resultado.
+
+    Un delivery fallido no se vuelve a seleccionar (el runner solo procesa
+    status='pending'), por lo que este estado es terminal.
+    """
+    delivery.status = "failed"
+    delivery.error = error
+    delivery.external_ref = None
+    delivery.delivered_at = None
+
+
+@dataclass(frozen=True, slots=True)
+class _DeliveryContext:
+    """Relaciones resueltas de un delivery, ya validadas."""
+
+    alert: Alert
+    rule: AlertRule | None
+    server: Server | None
+
+
+def _resolve_context(delivery: AlertDelivery) -> _DeliveryContext:
+    """Resuelve alerta, regla y servidor de un delivery.
+
+    Raises:
+        DeliveryError: Si el delivery no tiene alerta asociada.
+    """
+    alert = delivery.alert
+    if alert is None:
+        raise DeliveryError(f"delivery {delivery.id} has no alert", "alert_missing")
+    return _DeliveryContext(alert=alert, rule=alert.rule, server=None)
+
+
+def _log_delivery_failed(delivery: AlertDelivery, channel: str, reason: str) -> None:
+    """Log estructurado de un delivery fallido, sin datos de la alerta."""
+    logger.warning(
+        "delivery_failed",
+        delivery_id=str(delivery.id),
+        channel=channel,
+        reason=reason,
+        error=format_exc(),
+    )
 
 
 async def deliver_alerts(session: AsyncSession) -> DeliveryRunSummary:
@@ -58,15 +102,28 @@ async def deliver_alerts(session: AsyncSession) -> DeliveryRunSummary:
     ).all()
 
     for delivery in pending_deliveries:
-        alert = delivery.alert
-        rule = alert.rule
-        server = None
-
-        # Cargar server solo si alert.server_id no es None
-        if alert.server_id is not None:
-            server = await session.get(Server, alert.server_id)
-
         channel_name = delivery.channel
+
+        # Resolver alerta/regla/servidor puede lanzar (FK colgante, cascade
+        # incompleto, carga lazy). Eso debe marcar SOLO este delivery como
+        # failed y continuar el lote, nunca abortar el runner completo.
+        try:
+            context = _resolve_context(delivery)
+            alert = context.alert
+            rule = context.rule
+            server = context.server
+            if alert.server_id is not None:
+                server = await session.get(Server, alert.server_id)
+        except DeliveryError as e:
+            _mark_failed(delivery, f"unresolved: {e.reason}: {e.message}")
+            summary = DeliveryRunSummary(sent=summary.sent, failed=summary.failed + 1)
+            _log_delivery_failed(delivery, channel_name, "unresolved")
+            continue
+        except Exception as e:  # noqa: BLE001
+            _mark_failed(delivery, f"unresolved: {type(e).__name__}: {e}")
+            summary = DeliveryRunSummary(sent=summary.sent, failed=summary.failed + 1)
+            _log_delivery_failed(delivery, channel_name, "unresolved")
+            continue
 
         try:
             # Resolver configuración de canal: snapshot en delivery.config tiene prioridad,
@@ -77,10 +134,7 @@ async def deliver_alerts(session: AsyncSession) -> DeliveryRunSummary:
 
             # Configuración de canal faltante (ni snapshot ni rule.channels)
             if channel_config is None:
-                delivery.status = "failed"
-                delivery.error = "config_missing: channel not configured in rule"
-                delivery.external_ref = None
-                delivery.delivered_at = None
+                _mark_failed(delivery, "config_missing: channel not configured in rule")
                 summary = DeliveryRunSummary(sent=summary.sent, failed=summary.failed + 1)
                 logger.warning(
                     "delivery_failed",
@@ -117,10 +171,7 @@ async def deliver_alerts(session: AsyncSession) -> DeliveryRunSummary:
 
         except DeliveryError as e:
             # Error conocido del canal
-            delivery.status = "failed"
-            delivery.error = f"{e.reason}: {e.message}"
-            delivery.external_ref = None
-            delivery.delivered_at = None
+            _mark_failed(delivery, f"{e.reason}: {e.message}")
             summary = DeliveryRunSummary(sent=summary.sent, failed=summary.failed + 1)
             logger.warning(
                 "delivery_failed",
@@ -131,12 +182,9 @@ async def deliver_alerts(session: AsyncSession) -> DeliveryRunSummary:
                 reason=e.reason,
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # Cualquier otro error: nunca crashea el runner completo
-            delivery.status = "failed"
-            delivery.error = f"unexpected: {type(e).__name__}: {e}"
-            delivery.external_ref = None
-            delivery.delivered_at = None
+            _mark_failed(delivery, f"unexpected: {type(e).__name__}: {e}")
             summary = DeliveryRunSummary(sent=summary.sent, failed=summary.failed + 1)
             logger.warning(
                 "delivery_failed",

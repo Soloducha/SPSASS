@@ -15,7 +15,7 @@ class DeliveryError(Exception):
         message: Human-readable error description.
         reason: Machine-readable reason code.
             One of: "http_error", "timeout", "connection_error",
-            "config_missing", "unknown_channel".
+            "config_missing", "unknown_channel", "alert_missing".
     """
 
     def __init__(self, message: str, reason: str) -> None:

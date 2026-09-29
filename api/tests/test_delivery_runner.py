@@ -630,6 +630,56 @@ class TestDeliveryRunner:
         assert delivery2.external_ref == "email-ref-789"
         assert delivery2.error is None
 
+    @pytest.mark.asyncio
+    async def test_batch_isolation_unresolvable_alert_does_not_crash_runner(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A delivery whose alert/rule cannot be resolved fails alone, not the whole batch.
+
+        The alert/rule/server resolution happens before the send try-block. If it
+        raises, the runner must mark only that delivery as failed and keep
+        processing the remaining ones, preserving the "runner never crashes"
+        guarantee for every tenant in the batch.
+        """
+        tenant, server, rule, alert, seeded_delivery = await _seed_tenant_server_rule_alert_delivery(
+            db_session,
+            channel="email",
+            channel_config={"to": ["ops@example.com"]},
+        )
+
+        # A broken delivery: alert_id points to a row that will not exist.
+        # The relationship resolves to None, which the runner must treat as an
+        # isolated failure instead of crashing the batch.
+        orphan_delivery = AlertDelivery(
+            alert_id=uuid4(),
+            channel="email",
+            status="pending",
+            tenant_id=tenant.id,
+            config={"to": ["ops@example.com"]},
+        )
+        db_session.add(orphan_delivery)
+        await db_session.flush()
+
+        email_stub = StubChannel(return_ref="email-ref-orphan")
+        monkeypatch.setattr(
+            "app.workers.delivery_runner.get_channel", lambda name: email_stub
+        )
+
+        summary = await deliver_alerts(db_session)
+
+        await db_session.refresh(seeded_delivery)
+        await db_session.refresh(orphan_delivery)
+
+        # The healthy delivery still went out; the orphan failed alone.
+        assert seeded_delivery.status == "sent"
+        assert seeded_delivery.external_ref == "email-ref-orphan"
+        assert summary.sent == 1
+        assert summary.failed == 1
+        assert orphan_delivery.status == "failed"
+        assert orphan_delivery.error is not None
+        assert "unresolved" in orphan_delivery.error
+        assert "alert_missing" in orphan_delivery.error
+
 
 class TestWebhookPayload:
     """Tests for webhook payload structure with optional rule."""

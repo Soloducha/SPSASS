@@ -129,6 +129,21 @@ El Mes 3 probó que un job cron caído a las 3 AM nadie lo ve hasta la mañana (
 - Los work-units de T6 (`48130eb`, `0c6e8c6`) sí quedaron bajo RDD activo, pero **tampoco pasaron por `review assess` → review nativo**. Queda pendiente: el candidato es cada work-unit commit, nunca el branch acumulado.
 - El branch acumulado **no es candidato válido** (el candidato es un work-unit commit o un PR slice, nunca el branch entero), aunque `assess --base-ref main` devuelva `high_risk`.
 
+### Review nativa de los work-units de T6 (2026-09-29) — ESCALATED, 1 de 6 corregido
+
+**Assessment** (`base 29f9633` → HEAD): `high_risk`, `review_due: true`, 18 archivos / 777 líneas, señal `security` en `api/app/workers/delivery/webhook.py`. El mantenedor concedió la revisión de las 4 lentes.
+
+**Resultado**: las 4 lentes corrieron; la lente de riesgo cerró la transacción en estado `escalated` (`unknown_causality`) con 6 hallazgos severos. `next_transition` = `stop` (`native_stop_required`), que es terminal: la autoridad de review **no** quedó quemada ni aprobada, y el candidato **no** fue aprobado. Los IDs：`R3-AlertCreationConfigSnapshot`, `R3-DeliveryRunnerConfigResolution`, `R3-JobFailureAlertConfigSource`, `R4-1`, `R4-2`, `R4-4`. Solo se dispone de los IDs: los cuerpos de los hallazgos requieren inspección de lineage del mantenedor.
+
+**Hallazgo #2 — gap de resiliencia REAL, corregido.** `api/app/workers/delivery_runner.py` resolvía `delivery.alert`, `alert.rule` y `session.get(Server, ...)` **fuera** del `try` de envío. Una excepción ahí (FK colgante, cascade incompleto, carga lazy) abortaba el runner completo y descartaba los deliveries de los demás tenants, contradiciendo la garantía "nunca crashea el runner completo". Corrección: la resolución quedó en su propio guard con `except DeliveryError` + `except Exception` que marcan **solo ese** delivery como `failed` (`reason="unresolved"`, nuevo reason code `alert_missing`) y hacen `continue`. Se extrajeron `_mark_failed`, `_resolve_context` y `_log_delivery_failed` para eliminar la repetición de marcado que existía 3 veces. Regresión cubierta por `test_batch_isolation_unresolvable_alert_does_not_crash_runner`.
+
+**#1 y #3 — sin cambio de código, decisión de producto del mantenedor (2026-09-29):**
+
+- **#1 — `config=None` en un canal existente.** `rule.channels = {"webhook": None}` crea el delivery (la key existe) con `config=None`; el fallback a `rule.channels` es un no-op porque la causa raíz es el valor `None`, no la fila legacy, y el runner marca `failed` con `config_missing` + log. Se mantiene: fallar explícito es preferible a enviar un request malformado.
+- **#3 — job sin `channels` configurados.** `jobs.py` crea la alerta de fallo **sin ninguna entrega** cuando `job.config.channels` está vacío. Es intencional (queda visible en API/UI para que el operador la vea), pero implica que un job sin canales configurados **no notifica a nadie**. Hueco de producto Known, no de código.
+
+**Verificación del fix #2**: `ruff check` limpio · `mypy app` limpio (60 archivos) · `pytest tests/test_delivery_runner.py` 15/15 · suite completa `196 passed, 2 failed` (los 2 fallos son SMTP ambiental, preexistentes; antes del fix eran 195 passed).
+
 ## Rutas por task
 
 | Task | Ruta | Trigger |

@@ -338,7 +338,7 @@ class TestDeliveryRunner:
     async def test_unknown_channel_failed(
         self, db_session: AsyncSession
     ) -> None:
-        """delivery.channel='telegram' (unknown) → failed with unknown_channel."""
+        """delivery.channel='discord' (unregistered) → failed with unknown_channel."""
         tenant, server, rule, alert, _ = await _seed_tenant_server_rule_alert_delivery(
             db_session,
             channel="webhook",
@@ -355,10 +355,10 @@ class TestDeliveryRunner:
             await db_session.delete(d)
         await db_session.flush()
 
-        # Add telegram to rule.channels so config_missing does not trigger first
+        # Add discord to rule.channels so config_missing does not trigger first
         rule.channels = {
             "webhook": {"url": "http://example.invalid/hook"},
-            "telegram": {},  # dummy config so get_channel is called
+            "discord": {},  # dummy config so get_channel is called
         }
         db_session.add(rule)
         await db_session.flush()
@@ -366,7 +366,7 @@ class TestDeliveryRunner:
         # Insert delivery with unknown channel directly (bypassing schema validation)
         delivery = AlertDelivery(
             alert_id=alert.id,
-            channel="telegram",
+            channel="discord",
             status="pending",
             tenant_id=tenant.id,
         )

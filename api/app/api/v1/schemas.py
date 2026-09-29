@@ -86,8 +86,16 @@ class EmailChannel(BaseModel):
     to: Annotated[list[EmailStr], Field(min_length=1)]
 
 
+class TelegramChannel(BaseModel):
+    """Configuración del canal telegram."""
+
+    chat_id: Annotated[str, Field(min_length=1)]
+    thread_id: int | None = None
+    silent: bool = False
+
+
 # Valid channel keys
-ALLOWED_CHANNEL_KEYS = frozenset({"webhook", "email"})
+ALLOWED_CHANNEL_KEYS = frozenset({"webhook", "email", "telegram"})
 
 
 def _validate_channels_dict(v: dict) -> dict:
@@ -111,6 +119,16 @@ def _validate_channels_dict(v: dict) -> dict:
     if "email" in v:
         email = EmailChannel.model_validate(v["email"])
         result["email"] = {"to": email.to}
+
+    # Validate and normalize telegram if present
+    if "telegram" in v:
+        telegram = TelegramChannel.model_validate(v["telegram"])
+        telegram_config: dict = {"chat_id": telegram.chat_id}
+        if telegram.thread_id is not None:
+            telegram_config["thread_id"] = telegram.thread_id
+        if telegram.silent:
+            telegram_config["silent"] = True
+        result["telegram"] = telegram_config
 
     return result
 
@@ -136,7 +154,7 @@ class AlertRuleCreate(BaseModel):
     def validate_channels_create(cls, v: dict) -> dict:
         validated = _validate_channels_dict(v)
         if not validated:
-            raise ValueError("At least one channel (webhook or email) is required")
+            raise ValueError("At least one channel (webhook, email or telegram) is required")
         return validated
 
 
@@ -160,7 +178,7 @@ class AlertRuleUpdate(BaseModel):
             return None
         validated = _validate_channels_dict(v)
         if not validated:
-            raise ValueError("At least one channel (webhook or email) is required")
+            raise ValueError("At least one channel (webhook, email or telegram) is required")
         return validated
 
 

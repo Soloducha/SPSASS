@@ -245,7 +245,7 @@ class TestAlertRuleChannelsValidation:
     def test_update_unknown_channel_key_fails(self) -> None:
         """Update with unknown channel key fails."""
         with pytest.raises(ValidationError) as exc:
-            AlertRuleUpdate(channels={"telegram": {}})
+            AlertRuleUpdate(channels={"sms": {}})
         assert "unknown channel keys" in str(exc.value).lower()
 
     def test_update_webhook_missing_url_fails(self) -> None:

@@ -95,5 +95,6 @@ def get_channel(name: str) -> DeliveryChannel:
 # Import channels to trigger auto-registration
 from app.workers.delivery import (
     email,  # noqa: E402,F401
+    telegram,  # noqa: E402,F401
     webhook,  # noqa: E402,F401
 )

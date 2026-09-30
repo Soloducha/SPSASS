@@ -58,6 +58,9 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
   const [webhookHeaders, setWebhookHeaders] = useState(
     rule.channels.webhook?.headers ? JSON.stringify(rule.channels.webhook.headers, null, 2) : ''
   );
+  const [telegramChatId, setTelegramChatId] = useState(rule.channels.telegram?.chat_id ?? '');
+  const [telegramThreadId, setTelegramThreadId] = useState(String(rule.channels.telegram?.thread_id ?? ''));
+  const [telegramSilent, setTelegramSilent] = useState(rule.channels.telegram?.silent ?? false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
@@ -65,6 +68,7 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
 
   const hasEmail = emailTo.trim().length > 0;
   const hasWebhook = webhookUrl.trim().length > 0;
+  const hasTelegram = telegramChatId.trim().length > 0;
 
   const validateField = (name: string, value: string): string | null => {
     switch (name) {
@@ -141,6 +145,24 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
           }
         }
         return null;
+      case 'telegram_chat_id':
+        if (value && value.trim().length > 0) {
+          const chatId = value.trim();
+          const isNumericId = /^-?\d+$/.test(chatId);
+          const isUsername = /^@[A-Za-z0-9_]{5,32}$/.test(chatId);
+          if (!isNumericId && !isUsername) {
+            return 'chat_id debe ser un ID numérico (ej: -1001234567890) o un username (ej: @canal_bot)';
+          }
+        }
+        return null;
+      case 'telegram_thread_id':
+        if (value && value.trim().length > 0) {
+          const num = parseInt(value, 10);
+          if (isNaN(num) || num < 1 || !Number.isInteger(num)) {
+            return 'thread_id debe ser un entero positivo';
+          }
+        }
+        return null;
       default:
         return null;
     }
@@ -171,6 +193,12 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
       setWebhookUrl(value);
     } else if (name === 'webhook_headers') {
       setWebhookHeaders(value);
+    } else if (name === 'telegram_chat_id') {
+      setTelegramChatId(value);
+    } else if (name === 'telegram_thread_id') {
+      setTelegramThreadId(value);
+    } else if (name === 'telegram_silent') {
+      setTelegramSilent(value === 'true');
     }
 
     // Validate on change
@@ -196,6 +224,8 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
       email_to: emailTo,
       webhook_url: webhookUrl,
       webhook_headers: webhookHeaders,
+      telegram_chat_id: telegramChatId,
+      telegram_thread_id: telegramThreadId,
     };
 
     for (const [name, value] of Object.entries(fieldValues)) {
@@ -204,8 +234,8 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
     }
 
     // Check at least one channel
-    if (!hasEmail && !hasWebhook) {
-      newErrors.channels = 'Se requiere al menos un canal (email o webhook)';
+    if (!hasEmail && !hasWebhook && !hasTelegram) {
+      newErrors.channels = 'Se requiere al menos un canal (email, webhook o telegram)';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -235,6 +265,17 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
     } else {
       formData.append('webhook_url', ''); // Allow clearing
       formData.append('webhook_headers', '');
+    }
+    if (hasTelegram) {
+      formData.append('telegram_chat_id', telegramChatId.trim());
+      if (telegramThreadId.trim()) formData.append('telegram_thread_id', telegramThreadId.trim());
+      else formData.append('telegram_thread_id', ''); // Allow clearing
+      if (telegramSilent) formData.append('telegram_silent', 'true');
+      else formData.append('telegram_silent', ''); // Allow clearing
+    } else {
+      formData.append('telegram_chat_id', ''); // Allow clearing
+      formData.append('telegram_thread_id', '');
+      formData.append('telegram_silent', '');
     }
 
     try {
@@ -508,14 +549,14 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
             Canales de notificación
           </legend>
           <p className="mb-4 text-sm text-gray-500">
-            Configure al menos un canal. Puede usar ambos simultáneamente.
+            Configure al menos un canal. Puede usar email, webhook y telegram simultáneamente.
           </p>
 
           <div className="space-y-4">
             <div>
               <label htmlFor="email_to" className="block text-sm font-medium text-gray-700 mb-1">
                 Email - Destinatarios (separados por coma)
-                <span className="text-red-500" aria-hidden="true">{hasWebhook ? '' : ' *'}</span>
+                <span className="text-red-500" aria-hidden="true">{hasWebhook || hasTelegram ? '' : ' *'}</span>
               </label>
               <textarea
                 id="email_to"
@@ -541,7 +582,7 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
             <div>
               <label htmlFor="webhook_url" className="block text-sm font-medium text-gray-700 mb-1">
                 Webhook - URL
-                <span className="text-red-500" aria-hidden="true">{hasEmail ? '' : ' *'}</span>
+                <span className="text-red-500" aria-hidden="true">{hasEmail || hasTelegram ? '' : ' *'}</span>
               </label>
               <input
                 type="url"
@@ -584,6 +625,73 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
               <p className="mt-1 text-xs text-gray-500">
                 Objeto JSON con headers adicionales para el webhook.
               </p>
+            </div>
+
+            <div>
+              <label htmlFor="telegram_chat_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Telegram - Chat ID
+                <span className="text-red-500" aria-hidden="true">{hasEmail || hasWebhook ? '' : ' *'}</span>
+              </label>
+              <input
+                type="text"
+                id="telegram_chat_id"
+                name="telegram_chat_id"
+                value={telegramChatId}
+                onChange={handleChange}
+                placeholder="-1001234567890 o @canal_bot"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-20 min-h-[44px]"
+                aria-invalid={!!errors.telegram_chat_id}
+                aria-describedby={errors.telegram_chat_id ? 'telegram_chat_id-error' : undefined}
+              />
+              {errors.telegram_chat_id && (
+                <p id="telegram_chat_id-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {errors.telegram_chat_id}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                ID numérico del chat/grupo (ej: -1001234567890) o username del canal/bot (ej: @canal_bot).
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="telegram_thread_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Telegram - Thread ID (opcional)
+              </label>
+              <input
+                type="number"
+                id="telegram_thread_id"
+                name="telegram_thread_id"
+                value={telegramThreadId}
+                onChange={handleChange}
+                placeholder="42"
+                min="1"
+                step="1"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-20 min-h-[44px]"
+                aria-invalid={!!errors.telegram_thread_id}
+                aria-describedby={errors.telegram_thread_id ? 'telegram_thread_id-error' : undefined}
+              />
+              {errors.telegram_thread_id && (
+                <p id="telegram_thread_id-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {errors.telegram_thread_id}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                ID del tema (topic) en grupos con foros habilitados. Solo aplica si el grupo tiene topics.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="telegram_silent"
+                name="telegram_silent"
+                checked={telegramSilent}
+                onChange={e => { setTelegramSilent(e.target.checked); handleChange(e); }}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 focus:ring-2"
+              />
+              <label htmlFor="telegram_silent" className="text-sm font-medium text-gray-700 cursor-pointer">
+                Enviar sin notificación (silencioso)
+              </label>
             </div>
           </div>
 

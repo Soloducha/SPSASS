@@ -26,6 +26,7 @@ class AlertRepository(TenantScopedRepository):
         *,
         status: AlertStatus | None = None,
         severity: AlertSeverity | None = None,
+        silenced: bool | None = None,
         rule_id: UUID | None = None,
         offset: int = 0,
         limit: int = 100,
@@ -36,6 +37,11 @@ class AlertRepository(TenantScopedRepository):
             stmt = stmt.where(Alert.status == status)
         if severity is not None:
             stmt = stmt.where(Alert.severity == severity)
+        if silenced is not None:
+            if silenced:
+                stmt = stmt.where(Alert.silenced_at.is_not(None))
+            else:
+                stmt = stmt.where(Alert.silenced_at.is_(None))
         if rule_id is not None:
             stmt = stmt.where(Alert.rule_id == rule_id)
         stmt = stmt.offset(offset).limit(limit)

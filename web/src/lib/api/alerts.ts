@@ -18,6 +18,7 @@ export interface AlertResponse {
   acknowledged_at: string | null;
   acknowledged_by: string | null;
   value_at_trigger: number;
+  silenced: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -25,6 +26,7 @@ export interface AlertResponse {
 export interface AlertListParams {
   status?: AlertStatus;
   severity?: AlertSeverity;
+  silenced?: boolean;
   rule_id?: string;
   offset?: number;
   limit?: number;
@@ -36,6 +38,7 @@ export interface AlertAckResponse {
   acknowledged_at: string | null;
   resolved_at: string | null;
   acknowledged_by: string | null;
+  silenced: boolean;
 }
 
 /** Result of an authenticated fetch, including the HTTP status for error mapping. */
@@ -107,11 +110,12 @@ export async function listAlerts(params: AlertListParams = {}): Promise<{
   hasNext: boolean;
   error: string | null;
 }> {
-  const { status, severity, rule_id, offset = 0, limit = 50 } = params;
+  const { status, severity, silenced, rule_id, offset = 0, limit = 50 } = params;
 
   const searchParams = new URLSearchParams();
   if (status) searchParams.set('status', status);
   if (severity) searchParams.set('severity', severity);
+  if (silenced !== undefined) searchParams.set('silenced', String(silenced));
   if (rule_id) searchParams.set('rule_id', rule_id);
   searchParams.set('offset', String(Math.max(0, offset)));
   searchParams.set('limit', String(Math.min(50, Math.max(1, limit)))); // bounded to 50 max per task

@@ -19,12 +19,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.models.alert import Alert, AlertDelivery, AlertOperator, AlertRule, AlertStatus, EntityType
+from app.models.alert import Alert, AlertOperator, AlertRule, AlertStatus, EntityType
 from app.models.job import Job, JobRun
 from app.models.metric import Metric, MetricType
 from app.models.process import Process
 from app.models.server import Server
 from app.models.service import Service, ServiceState
+from app.workers.delivery_helpers import create_pending_deliveries
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -137,16 +138,12 @@ async def _create_alert_and_deliveries(params: _AlertCreateParams) -> Alert:
     await params.session.flush()
 
     # Crear AlertDelivery pendientes por cada canal (keys de dict)
-    channels = params.rule.channels or {}
-    for channel in sorted(set(channels.keys())):
-        delivery = AlertDelivery(
-            alert_id=alert.id,
-            channel=channel,
-            status="pending",
-            tenant_id=params.tenant_id,
-            config=channels.get(channel),
-        )
-        params.session.add(delivery)
+    create_pending_deliveries(
+        session=params.session,
+        alert_id=alert.id,
+        tenant_id=params.tenant_id,
+        channels=params.rule.channels,
+    )
 
     logger.info(
         "alert_created",

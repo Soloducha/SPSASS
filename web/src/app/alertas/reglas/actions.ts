@@ -382,7 +382,7 @@ export async function updateAlertRuleAction(
 
   if (telegramChatIdRaw !== null && telegramChatIdRaw.trim().length > 0) {
     const chatId = telegramChatIdRaw.trim();
-    const telegramConfig: AlertRuleUpdate['channels']['telegram'] = { chat_id: chatId };
+    const telegramConfig: NonNullable<AlertRuleUpdate['channels']>['telegram'] = { chat_id: chatId };
     if (telegramThreadIdRaw !== null && telegramThreadIdRaw.trim().length > 0) {
       const threadId = parseInt(telegramThreadIdRaw.trim(), 10);
       if (!isNaN(threadId) && threadId > 0) {

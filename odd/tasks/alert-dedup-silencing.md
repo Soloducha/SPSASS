@@ -129,13 +129,20 @@ La causa real: `evaluate_alerts` lee una ventana de métricas semiabierta (`Metr
 - Review nativa: lineage `review-e8123560e434bf34`, lente única `review-reliability`, **aprobada**, 0 bloqueantes. Autoridad quemada en el acknowledge.
 - 4 advisories no bloqueantes, a tratar como trabajo posterior separado. **Nunca** como razón para re-reviar este candidato:
   1. `R3-episode-boundary-limitation` (WARNING) — el límite de episodio ya documentado; la review lo confirma como tradeoff conocido, no defecto.
-  2. `R3-schema-validator-fragile-dict-access` (WARNING) — `_compute_silenced` usa `data.__dict__` sobre objetos ORM: frágil ante `__slots__`, descriptores o hybrid properties, y arrastra `_sa_instance_state` al dict de validación. **Es la deuda más real de las cuatro**; se resuelve con un campo derivado de Pydantic v2 en lugar del `model_validator`.
-  3. `R3-validator-inconsistent-mutation` (SUGGESTION) — la rama dict muta in-place y la rama objeto devuelve un dict nuevo.
-  4. `R3-test-helper-delete-metrics-imprecise` (SUGGESTION) — `_delete_metrics` filtra por `ts` + `server_id` sin `tenant_id` ni tipo.
+  2. `R3-schema-validator-fragile-dict-access` (WARNING) — **CORREGIDO en `b7ebcdf`**. `_compute_silenced` usaba `data.__dict__` sobre el objeto ORM, arrastrando `_sa_instance_state` al dict de validación y siendo frágil ante `__slots__`, descriptores o hybrid properties. Reemplazado por `@computed_field` + `@property`, que lee `silenced_at` directo bajo `from_attributes` — que es exactamente como las rutas ya construyen el schema (`AlertResponse.model_validate(alert)`). `AlertAckResponse` sigue la misma vía y los 2 call sites ahora pasan `silenced_at` en vez de un bool calculado a mano. Test HTTP que ata el contrato de serialización, verificado por mutación en ambas direcciones.
+  3. `R3-validator-inconsistent-mutation` (SUGGESTION) — **CORREGIDO en `b7ebcdf`** (era consecuencia del mismo `model_validator`; al desaparecer el validador, la inconsistencia desaparece).
+  4. `R3-test-helper-delete-metrics-imprecise` (SUGGESTION) — `_delete_metrics` filtra por `ts` + `server_id` sin `tenant_id` ni tipo. **Abierto**, menor.
+
+## Fix posterior al review — `b7ebcdf`
+
+Corregido el advisory 2 (el único con riesgo real) antes de entregar. Un test HTTP nuevo ata el contrato público: `silenced` viaja en la respuesta y refleja el estado del episodio, `silenced_at` queda excluido. Verificado por mutación: quitar `exclude=True` filtra `silenced_at` y el test falla; romper la property devuelve `False` y el test falla.
+
+Suite tras el fix: **249 passed, 2 failed (SMTP ambiental), 1 skipped (RLS)** — +1 sobre las 248 previas, que es el test nuevo.
 
 ## Pendiente para slices futuros (fuera de alcance de este slice)
 
 - Endpoint `unsilence` / re-notificación periódica (cooldown).
 - Escalado por severidad durante un mismo episodio.
 - Exponer `telegram` en el formulario web de reglas (`web/src/lib/api/rules.ts` `AlertRuleChannels` no lo declara aunque el backend sí lo acepta en `ALLOWED_CHANNEL_KEYS`).
-- Arreglar `_compute_silenced` con campo derivado (advisory 2).
+- Arreglar `_compute_silenced` con campo derivado (advisory 2) — **hecho en `b7ebcdf`**.
+- `_delete_metrics` más defensivo (advisory 4): agregar `tenant_id` y tipo a los filtros.

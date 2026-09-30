@@ -82,12 +82,13 @@ class Alert(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
 
     __tablename__ = "alerts"
 
-    rule_id: Mapped[UUID] = mapped_column(
-        ForeignKey("alert_rules.id", ondelete="CASCADE"), nullable=False, index=True
+    rule_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("alert_rules.id", ondelete="CASCADE"), nullable=True, index=True
     )
     server_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("servers.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    target_entity_id: Mapped[UUID | None] = mapped_column(nullable=True, index=True)
     severity: Mapped[AlertSeverity] = mapped_column(
         SAEnum(AlertSeverity, name="alert_severity", values_callable=lambda e: [m.value for m in e]),
         nullable=False,
@@ -135,6 +136,7 @@ class AlertDelivery(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
         DateTime(timezone=True), nullable=True
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
 
     # Relaciones
     alert: Mapped["Alert"] = relationship("Alert", back_populates="deliveries", lazy="selectin")

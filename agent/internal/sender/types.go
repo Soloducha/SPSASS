@@ -17,3 +17,23 @@ type Metric struct {
 	Value float64           `json:"value"`
 	Tags  map[string]string `json:"tags"`
 }
+
+// EntitiesBatch mirrors collector.EntitiesBatch for the sender package.
+// This avoids a circular dependency.
+type EntitiesBatch struct {
+	ServerID  string            `json:"server_id"`
+	TS        time.Time         `json:"ts"`
+	Processes []ProcessState    `json:"processes"`
+	Services  []ServiceState    `json:"services"`
+}
+
+type ProcessState struct {
+	Name    string `json:"name"`
+	Cmdline string `json:"cmdline"`
+	State   string `json:"state"`
+}
+
+type ServiceState struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+}

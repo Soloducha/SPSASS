@@ -90,6 +90,12 @@ type ingestResponse struct {
 	ServerID  string `json:"server_id"`
 }
 
+type entitiesIngestResponse struct {
+	Received  int    `json:"received"`
+	Inserted  int    `json:"inserted"`
+	ServerID  string `json:"server_id"`
+}
+
 // NewSender creates a new Sender.
 func NewSender(baseURL, apiKey string, logger *slog.Logger) *Sender {
 	if logger == nil {
@@ -158,6 +164,22 @@ func (s *Sender) SendMetrics(ctx context.Context, batch MetricsBatch) error {
 		return err
 	}
 	s.logger.Info("metrics_sent", "server_id", batch.ServerID, "received", resp.Received, "inserted", resp.Inserted)
+	return nil
+}
+
+// SendEntities sends a batch of process/service state to the API.
+func (s *Sender) SendEntities(ctx context.Context, batch EntitiesBatch) error {
+	body, err := json.Marshal(batch)
+	if err != nil {
+		return fmt.Errorf("marshal entities batch: %w", err)
+	}
+
+	var resp entitiesIngestResponse
+	err = s.doWithRetry(ctx, http.MethodPost, s.baseURL+"/api/v1/ingest/entities", body, &resp)
+	if err != nil {
+		return err
+	}
+	s.logger.Info("entities_sent", "server_id", batch.ServerID, "processes", len(batch.Processes), "services", len(batch.Services))
 	return nil
 }
 

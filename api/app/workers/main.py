@@ -1,9 +1,8 @@
 """Entry point para workers arq.
 
-Registra los cron jobs de rollups (1m/5m/1h/1d) y de alertas (1m). Cada
-job delega con una sesión SIN contexto de tenant: los rollups agregan
-métricas de TODOS los tenants y la evaluación de alertas evalúa las
-reglas activas de TODOS los tenants en un solo pase.
+Registra los cron jobs de rollups (1m/5m/1h/1d), alertas (1m) y jobs (1m).
+Cada job delega con una sesión SIN contexto de tenant: procesan TODOS
+los tenants en un solo pase.
 """
 
 import asyncio
@@ -20,6 +19,7 @@ from app.db.session import get_db_session_without_tenant
 from app.models.metric_rollup import RollupPeriod
 from app.workers.alerts import evaluate_alerts
 from app.workers.delivery_runner import DeliveryRunSummary, deliver_alerts
+from app.workers.jobs import run_due_jobs
 from app.workers.rollups import compute_rollups
 
 setup_logging()
@@ -82,6 +82,12 @@ async def deliver_alerts_row(ctx: dict[str, Any]) -> DeliveryRunSummary:
         return await deliver_alerts(session)
 
 
+async def run_due_jobs_row(ctx: dict[str, Any]) -> int:
+    """Ejecuta jobs CRON debidos sobre TODOS los tenants (sin contexto tenant)."""
+    async with get_db_session_without_tenant() as session:
+        return await run_due_jobs(session)
+
+
 class WorkerSettings(WorkerSettingsBase):
     """Configuración de workers arq (convención: atributos → kwargs de Worker)."""
 
@@ -93,6 +99,7 @@ class WorkerSettings(WorkerSettingsBase):
         func(rollup_day_1),
         func(evaluate_alerts_row),
         func(deliver_alerts_row),
+        func(run_due_jobs_row),
     ]
     cron_jobs: list[CronJob] = [
         cron(rollup_min_1, name="rollup-1m", run_at_startup=False, unique=True),
@@ -101,6 +108,7 @@ class WorkerSettings(WorkerSettingsBase):
         cron(rollup_day_1, name="rollup-1d", hour=0, minute=0, second=0, run_at_startup=False, unique=True),
         cron(evaluate_alerts_row, name="alert-eval-1m", run_at_startup=False, unique=True),
         cron(deliver_alerts_row, name="alert-delivery-1m", run_at_startup=False, unique=True),
+        cron(run_due_jobs_row, name="job-run-1m", run_at_startup=False, unique=True),
     ]
     on_startup: StartupShutdown | None = on_startup
     on_shutdown: StartupShutdown | None = on_shutdown

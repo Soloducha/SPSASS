@@ -15,7 +15,7 @@ class DeliveryError(Exception):
         message: Human-readable error description.
         reason: Machine-readable reason code.
             One of: "http_error", "timeout", "connection_error",
-            "config_missing", "unknown_channel".
+            "config_missing", "unknown_channel", "alert_missing".
     """
 
     def __init__(self, message: str, reason: str) -> None:
@@ -36,7 +36,7 @@ class DeliveryChannel(Protocol):
         self,
         *,
         alert: Alert,
-        rule: AlertRule,
+        rule: AlertRule | None,
         server: Server | None,
         channel_config: dict,
     ) -> str:
@@ -44,7 +44,8 @@ class DeliveryChannel(Protocol):
 
         Args:
             alert: The alert to deliver.
-            rule: The rule that triggered the alert.
+            rule: The rule that triggered the alert, or None for job-failure
+                alerts that have no associated AlertRule.
             server: The server associated with the alert, or None.
             channel_config: Channel-specific configuration from rule.channels.
 
@@ -94,5 +95,6 @@ def get_channel(name: str) -> DeliveryChannel:
 # Import channels to trigger auto-registration
 from app.workers.delivery import (
     email,  # noqa: E402,F401
+    telegram,  # noqa: E402,F401
     webhook,  # noqa: E402,F401
 )

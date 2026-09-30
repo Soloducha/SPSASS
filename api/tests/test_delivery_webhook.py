@@ -260,8 +260,11 @@ class TestWebhookChannel:
 
         payload = json.loads(captured_request["body"])  # type: ignore[arg-type]
 
-        # Check top-level keys
-        assert set(payload.keys()) == {"alert", "rule", "server"}
+        # Check top-level keys (now includes "source")
+        assert set(payload.keys()) == {"source", "alert", "rule", "server"}
+
+        # Check source discriminator
+        assert payload["source"] == "rule"
 
         # Check alert object
         assert payload["alert"]["id"] == str(alert.id)

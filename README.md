@@ -2,7 +2,7 @@
 
 **Monitoreo que funciona en 15 minutos, no en 15 días.**
 
-SaaS de monitoreo centralizado de servidores, jobs, procesos y servicios críticos, con alertas automáticas — entrega v1 por **Webhook y Email (SMTP)** — y reportes de disponibilidad y SLA. Telegram/WhatsApp: en roadmap.
+SaaS de monitoreo centralizado de servidores, jobs, procesos y servicios críticos, con alertas automáticas — entrega v1 por **Webhook, Email (SMTP) y Telegram** — y reportes de disponibilidad y SLA. WhatsApp: en roadmap.
 
 ---
 
@@ -93,9 +93,9 @@ Swagger UI: `http://localhost:8000/docs` (solo dev).
 ## 🔔 Alertas
 
 - **Motor**: `evaluate_alerts()` corre cada minuto (cron `alert-eval-1m`) y compara las últimas métricas contra las reglas del tenant. Al disparar, crea una `AlertDelivery` **por canal configurado** en estado `pending` (dedupe: no re-dispara mientras la alerta esté activa sin resolver).
-- **Reglas** (`/api/v1/alerts/rules`): condiciones sobre métricas (CPU, memoria, disco…), entidad objetivo, severidad y `channels` — **≥1 canal obligatorio**: `{"webhook": {"url", "headers"?}}` y/o `{"email": {"to": [...]}}`.
+- **Reglas** (`/api/v1/alerts/rules`): condiciones sobre métricas (CPU, memoria, disco…), entidad objetivo, severidad y `channels` — **≥1 canal obligatorio**: `{"webhook": {"url", "headers"?}}`, `{"email": {"to": [...]}}` y/o `{"telegram": {"chat_id", "thread_id"?, "silent"?}}`.
 - **Entrega**: el runner `deliver_alerts()` (cron `alert-delivery-1m`) procesa los `pending` cross-tenant y deja `sent` (con `external_ref`) o `failed` (con motivo tipado). Un intento por ciclo en v1 — sin reintentos con backoff aún.
-- **Canales v1**: Webhook HTTP POST (timeout 10s, headers custom) y Email vía SMTP (stdlib, `STARTTLS` opcional). Cómo agregar un canal nuevo: `api/app/workers/delivery/README.md`.
+- **Canales v1**: Webhook HTTP POST (timeout 10s, headers custom), Email vía SMTP (stdlib, `STARTTLS` opcional) y Telegram vía Bot API `sendMessage` (texto plano, timeout 10s). Cómo agregar un canal nuevo: `api/app/workers/delivery/README.md`.
 - **SMTP** — el canal email está activo solo si hay host y remitente (`smtp_enabled`):
 
 | Variable | Uso |
@@ -105,6 +105,15 @@ Swagger UI: `http://localhost:8000/docs` (solo dev).
 | `SMTP_USER` / `SMTP_PASSWORD` | Credenciales opcionales (login solo si hay usuario) |
 | `SMTP_FROM` | Remitente (vacío = email deshabilitado) |
 | `SMTP_STARTTLS` | `true`/`false` (default `true`) |
+
+- **Telegram** — el canal telegram está activo solo si hay bot token (`telegram_enabled`). El token es global; el `chat_id` va por regla:
+
+| Variable | Uso |
+|----------|-----|
+| `TELEGRAM_BOT_TOKEN` | Token del bot (obtenido con @BotFather; vacío = telegram deshabilitado) |
+| `TELEGRAM_API_BASE` | Base de la Bot API (default `https://api.telegram.org`) |
+| `TELEGRAM_MAX_MESSAGE_CHARS` | Límite duro de la API (`4096`); alertas más largas se reemplazan por un puntero al dashboard |
+| `PUBLIC_DASHBOARD_URL` | Base pública del dashboard, usada en ese puntero (vacío = sin enlace) |
 
 Consulta de alertas: `GET /api/v1/alerts` + acuse (`ack`) y resolución (`resolve`) según severidad. UI web de alertas: **shipped** — overview en `/alertas`, reglas CRUD en `/alertas/reglas` (crear, editar, eliminar con diálogo accesible) y acuse/resolución por fila.
 
@@ -233,7 +242,7 @@ Ver `propuesta.md` sección 4 y 10 para detalles de escalado.
 |-----|------|-------------|--------|
 | **1** | Fundaciones | Repo, CI/CD, Docker, auth, multi-tenant, modelos, bootstrap admin | ✅ Entregado |
 | **2** | Agente + ingesta | Agente Go v1, heartbeat, API ingesta, rollups, dashboard v0.1 | ✅ Entregado |
-| **3** | Alertas | Alert Engine, reglas, dedupe, entrega Webhook + Email (SMTP) | ✅ Entregado (canales v1: webhook + email; Telegram/WhatsApp ⏳) |
+| **3** | Alertas | Alert Engine, reglas, dedupe, entrega Webhook + Email (SMTP) + Telegram | ✅ Entregado (canales v1: webhook + email + telegram; WhatsApp ⏳) |
 | **4** | Procesos + jobs | Servicios/procesos, job monitor, auto-restart, WhatsApp | ⏳ Pendiente |
 | **5** | Reportes | Disponibilidad, incidentes, SLA, métricas históricas | ⏳ Pendiente |
 | **6** | Pulido + beta | Onboarding, invitaciones, plan gates, beta cerrada 3-5 pilotos | ⏳ Pendiente |

@@ -118,6 +118,30 @@ class Settings(BaseSettings):
         """True only when SMTP_HOST and SMTP_FROM are both configured."""
         return bool(self.SMTP_HOST and self.SMTP_FROM)
 
+    # ──────────────────────────────────────────────
+    # Telegram (alert delivery)
+    # ──────────────────────────────────────────────
+    TELEGRAM_BOT_TOKEN: str = Field(default="", description="Telegram bot token (empty = telegram delivery disabled)")
+    TELEGRAM_API_BASE: str = Field(
+        default="https://api.telegram.org",
+        description="Telegram Bot API base URL",
+    )
+    TELEGRAM_MAX_MESSAGE_CHARS: int = Field(
+        default=4096,
+        ge=1,
+        le=4096,
+        description="Max message length accepted by Telegram (hard API limit)",
+    )
+    PUBLIC_DASHBOARD_URL: str = Field(
+        default="",
+        description="Public dashboard base URL, used to link out from truncated alert messages",
+    )
+
+    @property
+    def telegram_enabled(self) -> bool:
+        """True only when a Telegram bot token is configured."""
+        return bool(self.TELEGRAM_BOT_TOKEN)
+
 
 @lru_cache
 def get_settings() -> Settings:

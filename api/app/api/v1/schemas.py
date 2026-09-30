@@ -1,13 +1,22 @@
-"""Esquemas Pydantic para API v1 (servidores, ingesta, alertas)."""
+"""Esquemas Pydantic para API v1 (servidores, ingesta, alertas, procesos, servicios, jobs)."""
 
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    HttpUrl,
+    field_validator,
+    model_validator,
+)
 
 from app.models.alert import AlertOperator, AlertSeverity, AlertStatus, EntityType
+from app.models.job import JobKind, JobStatus
 from app.models.metric import MetricType
+from app.models.service import ServiceState
 
 
 # ──────────────────────────────────────────────
@@ -77,8 +86,16 @@ class EmailChannel(BaseModel):
     to: Annotated[list[EmailStr], Field(min_length=1)]
 
 
+class TelegramChannel(BaseModel):
+    """Configuración del canal telegram."""
+
+    chat_id: Annotated[str, Field(min_length=1)]
+    thread_id: int | None = None
+    silent: bool = False
+
+
 # Valid channel keys
-ALLOWED_CHANNEL_KEYS = frozenset({"webhook", "email"})
+ALLOWED_CHANNEL_KEYS = frozenset({"webhook", "email", "telegram"})
 
 
 def _validate_channels_dict(v: dict) -> dict:
@@ -102,6 +119,16 @@ def _validate_channels_dict(v: dict) -> dict:
     if "email" in v:
         email = EmailChannel.model_validate(v["email"])
         result["email"] = {"to": email.to}
+
+    # Validate and normalize telegram if present
+    if "telegram" in v:
+        telegram = TelegramChannel.model_validate(v["telegram"])
+        telegram_config: dict = {"chat_id": telegram.chat_id}
+        if telegram.thread_id is not None:
+            telegram_config["thread_id"] = telegram.thread_id
+        if telegram.silent:
+            telegram_config["silent"] = True
+        result["telegram"] = telegram_config
 
     return result
 
@@ -127,7 +154,7 @@ class AlertRuleCreate(BaseModel):
     def validate_channels_create(cls, v: dict) -> dict:
         validated = _validate_channels_dict(v)
         if not validated:
-            raise ValueError("At least one channel (webhook or email) is required")
+            raise ValueError("At least one channel (webhook, email or telegram) is required")
         return validated
 
 
@@ -151,7 +178,7 @@ class AlertRuleUpdate(BaseModel):
             return None
         validated = _validate_channels_dict(v)
         if not validated:
-            raise ValueError("At least one channel (webhook or email) is required")
+            raise ValueError("At least one channel (webhook, email or telegram) is required")
         return validated
 
 
@@ -183,7 +210,7 @@ class AlertResponse(BaseModel):
 
     id: UUID
     tenant_id: UUID
-    rule_id: UUID
+    rule_id: UUID | None
     server_id: UUID | None
     severity: AlertSeverity
     status: AlertStatus
@@ -231,3 +258,255 @@ class AlertListParams(BaseModel):
     rule_id: UUID | None = None
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
+
+
+# ──────────────────────────────────────────────
+# Process Schemas (T1)
+# ──────────────────────────────────────────────
+class ProcessCreate(BaseModel):
+    """Request para crear un proceso."""
+
+    server_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    pattern: str = Field(min_length=1, max_length=500)
+    expected_count: int = Field(default=1, ge=1)
+    auto_restart: bool = False
+    config: dict = Field(default_factory=dict)
+
+
+class ProcessUpdate(BaseModel):
+    """Request para actualizar un proceso (campos opcionales)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    pattern: str | None = Field(default=None, min_length=1, max_length=500)
+    expected_count: int | None = Field(default=None, ge=1)
+    auto_restart: bool | None = None
+    config: dict | None = None
+
+
+class ProcessResponse(BaseModel):
+    """Response de proceso."""
+
+    id: UUID
+    tenant_id: UUID
+    server_id: UUID
+    name: str
+    pattern: str
+    expected_count: int
+    auto_restart: bool
+    config: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ──────────────────────────────────────────────
+# Service Schemas (T1)
+# ──────────────────────────────────────────────
+class ServiceCreate(BaseModel):
+    """Request para crear un servicio."""
+
+    server_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    desired_state: ServiceState = ServiceState.RUNNING
+    auto_restart: bool = False
+    config: dict = Field(default_factory=dict)
+
+
+class ServiceUpdate(BaseModel):
+    """Request para actualizar un servicio (campos opcionales)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    desired_state: ServiceState | None = None
+    auto_restart: bool | None = None
+    config: dict | None = None
+
+
+class ServiceResponse(BaseModel):
+    """Response de servicio."""
+
+    id: UUID
+    tenant_id: UUID
+    server_id: UUID
+    name: str
+    desired_state: ServiceState
+    auto_restart: bool
+    last_status: ServiceState
+    last_checked_at: datetime | None
+    config: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ──────────────────────────────────────────────
+# Job Schemas (T1)
+# ──────────────────────────────────────────────
+class JobCreate(BaseModel):
+    """Request para crear un job."""
+
+    server_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    kind: JobKind
+    schedule_cron: str | None = Field(default=None, max_length=100)
+    command: str = Field(min_length=1)
+    timeout_s: int = Field(default=3600, ge=1)
+    alert_on_fail: bool = True
+    auto_restart: bool = False
+    status: JobStatus = JobStatus.ACTIVE
+    config: dict = Field(default_factory=dict)
+
+    @field_validator("config", mode="before")
+    @classmethod
+    def validate_config_channels(cls, v: dict) -> dict:
+        """Valida y normaliza el sub-dict channels dentro de config si está presente."""
+        if not isinstance(v, dict):
+            raise ValueError("config must be a dict")  # noqa: TRY004 - Pydantic v2 mode="before" validators need ValueError
+
+        # Only validate channels if the key is explicitly present
+        if "channels" in v:
+            channels = v["channels"]
+            if not isinstance(channels, dict):
+                raise ValueError("config.channels must be a dict")  # noqa: TRY004 - Pydantic v2 mode="before" validators need ValueError
+            # Validate and normalize channels, but allow empty dict
+            validated_channels = _validate_channels_dict(channels)
+            # Replace with normalized version (may be empty)
+            v = {**v, "channels": validated_channels}
+        return v
+
+    @model_validator(mode="after")
+    def validate_cron_schedule(self) -> "JobCreate":
+        """Valida que schedule_cron esté presente para jobs CRON."""
+        if self.kind == JobKind.CRON and not self.schedule_cron:
+            raise ValueError("schedule_cron is required for CRON jobs")
+        return self
+
+
+class JobUpdate(BaseModel):
+    """Request para actualizar un job (campos opcionales)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    kind: JobKind | None = None
+    schedule_cron: str | None = Field(default=None, max_length=100)
+    command: str | None = Field(default=None, min_length=1)
+    timeout_s: int | None = Field(default=None, ge=1)
+    alert_on_fail: bool | None = None
+    auto_restart: bool | None = None
+    status: JobStatus | None = None
+    config: dict | None = None
+
+    @field_validator("config", mode="before")
+    @classmethod
+    def validate_config_channels(cls, v: dict | None) -> dict | None:
+        """Valida y normaliza el sub-dict channels dentro de config si está presente."""
+        if v is None:
+            return None
+        if not isinstance(v, dict):
+            raise ValueError("config must be a dict")  # noqa: TRY004 - Pydantic v2 mode="before" validators need ValueError
+
+        # Only validate channels if the key is explicitly present
+        if "channels" in v:
+            channels = v["channels"]
+            if not isinstance(channels, dict):
+                raise ValueError("config.channels must be a dict")  # noqa: TRY004 - Pydantic v2 mode="before" validators need ValueError
+            # Validate and normalize channels, but allow empty dict
+            validated_channels = _validate_channels_dict(channels)
+            # Replace with normalized version (may be empty), preserve other keys
+            v = {**v, "channels": validated_channels}
+        return v
+
+
+class JobResponse(BaseModel):
+    """Response de job."""
+
+    id: UUID
+    tenant_id: UUID
+    server_id: UUID
+    name: str
+    kind: JobKind
+    schedule_cron: str | None
+    command: str
+    timeout_s: int
+    alert_on_fail: bool
+    auto_restart: bool
+    status: JobStatus
+    config: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ──────────────────────────────────────────────
+# JobRun Schemas (T1)
+# ──────────────────────────────────────────────
+class JobRunResponse(BaseModel):
+    """Response de ejecución de job."""
+
+    id: UUID
+    tenant_id: UUID
+    job_id: UUID
+    started_at: datetime
+    finished_at: datetime | None
+    exit_code: int | None
+    status: str
+    output_tail: str | None
+    run_metadata: dict
+
+    model_config = {"from_attributes": True}
+
+
+class JobRunListParams(BaseModel):
+    """Parámetros de consulta para listar ejecuciones de job."""
+
+    limit: int = Field(default=100, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+
+
+class JobListParams(BaseModel):
+    """Parámetros de consulta para listar jobs."""
+
+    server_id: UUID | None = None
+    status: JobStatus | None = None
+    limit: int = Field(default=100, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+
+
+# ──────────────────────────────────────────────
+# Entity Ingest Schemas (T4)
+# ──────────────────────────────────────────────
+
+class EntityProcessItem(BaseModel):
+    """Proceso reportado por el agente."""
+
+    name: str = Field(min_length=1, max_length=255)
+    cmdline: str | None = None
+    state: str = Field(min_length=1)  # "running" | "unknown"
+
+
+class EntityServiceItem(BaseModel):
+    """Servicio reportado por el agente."""
+
+    name: str = Field(min_length=1, max_length=255)
+    state: str = Field(min_length=1)  # "running" | "stopped" | "failed" | "unknown"
+
+
+class EntityIngestPayload(BaseModel):
+    """Payload para ingesta de estado de entidades (procesos y servicios)."""
+
+    server_id: UUID
+    ts: datetime | None = None
+    processes: list[EntityProcessItem] = Field(default_factory=list)
+    services: list[EntityServiceItem] = Field(default_factory=list)
+
+
+class EntitiesIngestResponse(BaseModel):
+    """Response de ingesta de estado de entidades."""
+
+    received_processes: int
+    received_services: int
+    matched_processes: int
+    matched_services: int
+    server_id: UUID

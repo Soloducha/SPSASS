@@ -235,24 +235,23 @@ async def _evaluate_rule_for_server(ctx: _ServerEvalContext) -> bool:
             ))
             return True
         logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id))
-    else:
-        # No hay violación: reconciliar
-        if episode is not None:
-            if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
-                # Auto-resolución normal: la violación cesó
-                await _resolve_alert(episode, now, rule.id)
-            else:
-                # episode.status == RESOLVED y silenced_at NOT NULL
-                # El target se recuperó mientras la alerta estaba silenciada:
-                # limpiar silenced_at para cerrar el episodio (no flippear status)
-                episode.silenced_at = None
-                logger.info(
-                    "alert_episode_closed",
-                    alert_id=str(episode.id),
-                    rule_id=str(rule.id),
-                    tenant_id=str(episode.tenant_id),
-                    reason="target_recovered_while_silenced",
-                )
+    # No hay violación: reconciliar
+    elif episode is not None:
+        if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+            # Auto-resolución normal: la violación cesó
+            await _resolve_alert(episode, now, rule.id)
+        else:
+            # episode.status == RESOLVED y silenced_at NOT NULL
+            # El target se recuperó mientras la alerta estaba silenciada:
+            # limpiar silenced_at para cerrar el episodio (no flippear status)
+            episode.silenced_at = None
+            logger.info(
+                "alert_episode_closed",
+                alert_id=str(episode.id),
+                rule_id=str(rule.id),
+                tenant_id=str(episode.tenant_id),
+                reason="target_recovered_while_silenced",
+            )
     return False
 
 
@@ -295,20 +294,19 @@ async def _evaluate_rule_for_service(
             ))
             return True
         logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id), service_id=str(service.id))
-    else:
-        # No hay violación: reconciliar
-        if episode is not None:
-            if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
-                await _resolve_alert(episode, now, rule.id)
-            else:
-                episode.silenced_at = None
-                logger.info(
-                    "alert_episode_closed",
-                    alert_id=str(episode.id),
-                    rule_id=str(rule.id),
-                    tenant_id=str(episode.tenant_id),
-                    reason="target_recovered_while_silenced",
-                )
+    # No hay violación: reconciliar
+    elif episode is not None:
+        if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+            await _resolve_alert(episode, now, rule.id)
+        else:
+            episode.silenced_at = None
+            logger.info(
+                "alert_episode_closed",
+                alert_id=str(episode.id),
+                rule_id=str(rule.id),
+                tenant_id=str(episode.tenant_id),
+                reason="target_recovered_while_silenced",
+            )
     return False
 
 
@@ -351,20 +349,19 @@ async def _evaluate_rule_for_process(
             ))
             return True
         logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id), process_id=str(process.id))
-    else:
-        # No hay violación: reconciliar
-        if episode is not None:
-            if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
-                await _resolve_alert(episode, now, rule.id)
-            else:
-                episode.silenced_at = None
-                logger.info(
-                    "alert_episode_closed",
-                    alert_id=str(episode.id),
-                    rule_id=str(rule.id),
-                    tenant_id=str(episode.tenant_id),
-                    reason="target_recovered_while_silenced",
-                )
+    # No hay violación: reconciliar
+    elif episode is not None:
+        if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+            await _resolve_alert(episode, now, rule.id)
+        else:
+            episode.silenced_at = None
+            logger.info(
+                "alert_episode_closed",
+                alert_id=str(episode.id),
+                rule_id=str(rule.id),
+                tenant_id=str(episode.tenant_id),
+                reason="target_recovered_while_silenced",
+            )
     return False
 
 
@@ -447,20 +444,19 @@ async def _evaluate_rule_for_job(
             ))
             return True
         logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id), job_id=str(job.id))
-    else:
-        # No hay violación (success, o fallo ya alertado por runner): reconciliar
-        if episode is not None:
-            if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
-                await _resolve_alert(episode, now, rule.id)
-            else:
-                episode.silenced_at = None
-                logger.info(
-                    "alert_episode_closed",
-                    alert_id=str(episode.id),
-                    rule_id=str(rule.id),
-                    tenant_id=str(episode.tenant_id),
-                    reason="target_recovered_while_silenced",
-                )
+    # No hay violación (success, o fallo ya alertado por runner): reconciliar
+    elif episode is not None:
+        if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+            await _resolve_alert(episode, now, rule.id)
+        else:
+            episode.silenced_at = None
+            logger.info(
+                "alert_episode_closed",
+                alert_id=str(episode.id),
+                rule_id=str(rule.id),
+                tenant_id=str(episode.tenant_id),
+                reason="target_recovered_while_silenced",
+            )
     return False
 
 

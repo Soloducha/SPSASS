@@ -29,7 +29,6 @@ from app.workers.alerts import evaluate_alerts
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 # ──────────────────────────────────────────────
 # Helpers de métricas (compartidos con test_alerts.py)
 # ──────────────────────────────────────────────

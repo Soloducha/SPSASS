@@ -1,7 +1,7 @@
 """Esquemas Pydantic para API v1 (servidores, ingesta, alertas, procesos, servicios, jobs)."""
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import (
@@ -227,7 +227,7 @@ class AlertResponse(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _compute_silenced(cls, data: Any) -> Any:
+    def _compute_silenced(cls, data: object) -> object:
         """Deriva silenced de silenced_at si viene de un objeto ORM."""
         if hasattr(data, "silenced_at"):
             silenced_at = getattr(data, "silenced_at", None)

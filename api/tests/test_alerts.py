@@ -22,7 +22,7 @@ from app.models.alert import (
 from app.models.metric import Metric, MetricType
 from app.models.server import Server, ServerStatus
 from app.models.tenant import Tenant
-from app.workers.alerts import evaluate_alerts
+from app.workers.alerts import evaluate_alerts, _get_episode_alert
 from app.workers.delivery_helpers import create_pending_deliveries
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -622,8 +622,6 @@ class TestAlertEngine:
         self, db_session: AsyncSession
     ) -> None:
         """_get_episode_alert() devuelve alerta RESOLVED+silenced_at (nuevo caso dedup)."""
-        from app.workers.alerts import _get_episode_alert
-
         tenant, server = await _seed_tenant_server(db_session)
 
         # Crear alerta RESOLVED con silenced_at

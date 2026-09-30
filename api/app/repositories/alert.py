@@ -21,7 +21,7 @@ class AlertRepository(TenantScopedRepository):
 
     model = Alert
 
-    async def list_filtered(
+    async def list_filtered(  # noqa: PLR0913
         self,
         *,
         status: AlertStatus | None = None,

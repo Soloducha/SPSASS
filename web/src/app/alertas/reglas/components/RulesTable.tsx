@@ -70,6 +70,12 @@ function formatChannels(channels: AlertRuleResponse['channels']): string {
   if (channels.webhook) {
     parts.push(`Webhook: ${channels.webhook.url}`);
   }
+  if (channels.telegram) {
+    const tg = channels.telegram;
+    const threadPart = tg.thread_id ? ` (thread: ${tg.thread_id})` : '';
+    const silentPart = tg.silent ? ' [silent]' : '';
+    parts.push(`Telegram: ${tg.chat_id}${threadPart}${silentPart}`);
+  }
   return parts.length > 0 ? parts.join('; ') : '—';
 }
 

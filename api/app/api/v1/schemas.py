@@ -9,6 +9,7 @@ from pydantic import (
     EmailStr,
     Field,
     HttpUrl,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -221,21 +222,19 @@ class AlertResponse(BaseModel):
     acknowledged_by: UUID | None
     value_at_trigger: float
     silenced_at: datetime | None = Field(default=None, exclude=True)
-    silenced: bool
     created_at: datetime
     updated_at: datetime
 
-    @model_validator(mode="before")
-    @classmethod
-    def _compute_silenced(cls, data: object) -> object:
-        """Deriva silenced de silenced_at si viene de un objeto ORM."""
-        if hasattr(data, "silenced_at"):
-            silenced_at = getattr(data, "silenced_at", None)
-            if isinstance(data, dict):
-                data["silenced"] = silenced_at is not None
-            else:
-                return {**data.__dict__, "silenced": silenced_at is not None}
-        return data
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def silenced(self) -> bool:
+        """Si un humano silenció esta alerta (la resolvió mientras violaba).
+
+        Derivado de `silenced_at` para que el cliente no tenga que
+        interpretar null. `silenced_at` queda excluido de la serialización:
+        es estado interno del episodio, no parte del contrato público.
+        """
+        return self.silenced_at is not None
 
     model_config = {"from_attributes": True}
 
@@ -259,7 +258,13 @@ class AlertAckResponse(BaseModel):
     acknowledged_at: datetime | None
     resolved_at: datetime | None
     acknowledged_by: UUID | None
-    silenced: bool
+    silenced_at: datetime | None = Field(default=None, exclude=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def silenced(self) -> bool:
+        """Derivado de `silenced_at`; ver `AlertResponse.silenced`."""
+        return self.silenced_at is not None
 
 
 # ──────────────────────────────────────────────

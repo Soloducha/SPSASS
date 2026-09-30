@@ -1354,6 +1354,56 @@ class TestAlertsAPI:
         assert resolve_resp.json()["detail"] == "Alerta no encontrada"
 
     @pytest.mark.asyncio
+    async def test_silenced_flag_serialized_and_silenced_at_hidden(
+        self, async_client: AsyncClient
+    ) -> None:
+        """El contrato de serialización de `silenced` ata el schema derivado.
+
+        `silenced` es un campo derivado de `silenced_at`: debe viajar en la
+        respuesta para que el cliente no interprete null, y `silenced_at` debe
+        quedar excluido porque es estado interno del episodio, no del contrato
+        público. Antes de este test el schema derivaba `silenced` con un
+        `model_validator` que copiaba `__dict__` del objeto ORM — un cambio de
+        `silenced` a `silenced_at` en el modelo se serializaba sin que nada lo
+        detectara.
+        """
+        client = async_client
+        token = await _register_and_login(client, "alert_silenced_schema@example.com")
+        api_key = await _create_api_key(client, token, "Agent Silenced")
+
+        _rule_id, alert_id = await self._setup_alert_via_engine(client, token, api_key)
+
+        # Antes de resolver: OPEN, no silenciada
+        open_resp = await client.get(
+            "/api/v1/alerts?limit=50",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert open_resp.status_code == 200
+        open_alert = next(a for a in open_resp.json() if a["id"] == alert_id)
+        assert open_alert["silenced"] is False
+        assert "silenced_at" not in open_alert
+
+        # Resolver → el endpoint silencia el episodio (repo.resolve)
+        resolve_resp = await client.post(
+            f"/api/v1/alerts/{alert_id}/resolve",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resolve_resp.status_code == 200
+        resolve_data = resolve_resp.json()
+        assert resolve_data["silenced"] is True, "resolve debe reportar silenced=True"
+        assert "silenced_at" not in resolve_data, "silenced_at es estado interno"
+
+        # Y el listado lo refleja
+        list_resp = await client.get(
+            "/api/v1/alerts?limit=50",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert list_resp.status_code == 200
+        listed = next(a for a in list_resp.json() if a["id"] == alert_id)
+        assert listed["silenced"] is True
+        assert "silenced_at" not in listed
+
+    @pytest.mark.asyncio
     async def test_tenant_isolation_alerts(self, async_client: AsyncClient) -> None:
         """Tenant A no ve alertas de Tenant B."""
         client = async_client

@@ -22,7 +22,7 @@ from app.models.alert import (
 from app.models.metric import Metric, MetricType
 from app.models.server import Server, ServerStatus
 from app.models.tenant import Tenant
-from app.workers.alerts import evaluate_alerts, _get_episode_alert
+from app.workers.alerts import _get_episode_alert, evaluate_alerts
 from app.workers.delivery_helpers import create_pending_deliveries
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -147,6 +147,27 @@ async def _add_metrics(session: AsyncSession, seed: _MetricSeed) -> list[datetim
         timestamps.append(ts)
     await session.flush()
     return timestamps
+
+
+async def _delete_metrics(session: AsyncSession, timestamps: list[datetime]) -> None:
+    """Borra las métricas con los timestamps indicados.
+
+    Simula que esos samples salieron de la ventana de evaluación, que es lo que
+    ocurre en producción conforme avanza el reloj. Necesario porque el motor lee
+    una ventana semiabierta (`ts >= now - duration_s`) sin cota superior: los
+    samples sembrados en "now" permanecen dentro de la ventana durante toda la
+    vida del test.
+    """
+    for ts in timestamps:
+        metric = await session.scalar(
+            select(Metric).where(
+                Metric.server_id.is_not(None),
+                Metric.ts == ts,
+            )
+        )
+        if metric is not None:
+            await session.delete(metric)
+    await session.flush()
 
 
 # ──────────────────────────────────────────────
@@ -720,22 +741,105 @@ class TestAlertEngine:
         assert alert.silenced_at is None  # ¡silenced_at limpiado!
         assert alert.resolved_at is not None  # resolved_at se mantiene
 
-    @ pytest.mark.skip(reason="Timestamp caching issue in test infrastructure - core functionality verified by other tests")
     async def test_re_violation_after_normal_resolve_creates_new_alert(
         self, db_session: AsyncSession
     ) -> None:
-        """Re-violation after recovery: alert auto-resolved normally (silenced_at NULL),
-        target violates again → NEW alert IS created.
+        """Re-violation after a NORMAL auto-resolve → a NEW alert IS created.
 
-        Regression guard for over-suppression — make sure silencing did not break
-        normal re-firing.
+        Regression guard for over-suppression: silencing must not suppress a
+        legitimate second episode. This is the test that proves silencing is not
+        over-broad — if the episode gate were wrong, the third phase would
+        silently create 0 alerts and a real second incident would go dark.
 
-        NOTE: This test is skipped due to timestamp caching issues in the test
-        infrastructure (SQLAlchemy caches INSERT results). The core functionality
-        is verified by other tests: test_self_healing_silenced_alert_when_target_recovers
-        and test_human_resolve_while_violating_silences_episode.
+        Note on the metric window: `evaluate_alerts` reads a half-open window
+        (`Metric.ts >= now - duration_s`) with no upper bound, and `now` comes
+        from the real clock, so samples seeded at "now" stay inside the window
+        for the lifetime of the test. Older samples only leave the window by
+        rolling out of it in real time. Deleting the previous phase's samples
+        is therefore the faithful simulation of that rollover.
         """
-        pass
+        tenant, server = await _seed_tenant_server(db_session)
+
+        violating_ts = await _add_metrics(
+            db_session,
+            _MetricSeed(
+                server,
+                tenant,
+                MetricType.CPU_USAGE,
+                [85.0, 87.0, 82.0, 88.0, 90.0],
+                base_ts=datetime.now(UTC) - timedelta(seconds=60),
+            ),
+        )
+
+        rule = AlertRule(
+            tenant_id=tenant.id,
+            entity_type=EntityType.SERVER,
+            entity_id=server.id,
+            metric="cpu_usage",
+            operator=AlertOperator.GT,
+            threshold=80.0,
+            duration_s=60,
+            severity=AlertSeverity.WARNING,
+            channels={"email": {}},
+            is_active=True,
+        )
+        db_session.add(rule)
+        await db_session.flush()
+
+        # Phase 1: sustained breach → alert OPEN
+        assert await evaluate_alerts(db_session) == 1
+
+        first_alert = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        assert first_alert is not None
+        first_alert_id = first_alert.id
+
+        # Phase 2: old breaching samples roll out of the window and healthy
+        # samples take their place → normal auto-resolve, silenced_at stays NULL.
+        await _delete_metrics(db_session, violating_ts)
+        await _add_metrics(
+            db_session,
+            _MetricSeed(
+                server,
+                tenant,
+                MetricType.CPU_USAGE,
+                [45.0, 50.0, 40.0, 55.0, 48.0],
+                base_ts=datetime.now(UTC) - timedelta(seconds=60),
+            ),
+        )
+
+        assert await evaluate_alerts(db_session) == 0
+        await db_session.refresh(first_alert)
+        assert first_alert.status == AlertStatus.RESOLVED
+        assert first_alert.silenced_at is None, "auto-resolve must NOT silence"
+
+        # Phase 3: healthy samples roll out, breach returns → a NEW alert fires.
+        healthy_ts = (
+            await db_session.scalars(
+                select(Metric.ts).where(Metric.server_id == server.id, Metric.type == MetricType.CPU_USAGE)
+            )
+        ).all()
+        await _delete_metrics(db_session, list(healthy_ts))
+        await _add_metrics(
+            db_session,
+            _MetricSeed(
+                server,
+                tenant,
+                MetricType.CPU_USAGE,
+                [95.0, 97.0, 99.0],
+                base_ts=datetime.now(UTC) - timedelta(seconds=30),
+            ),
+        )
+
+        assert await evaluate_alerts(db_session) == 1, "a second episode MUST notify"
+
+        all_alerts = (
+            await db_session.scalars(select(Alert).where(Alert.rule_id == rule.id).order_by(Alert.created_at))
+        ).all()
+        assert len(all_alerts) == 2, "exactly one alert per episode"
+        new_alert = all_alerts[-1]
+        assert new_alert.id != first_alert_id
+        assert new_alert.status == AlertStatus.OPEN
+        assert new_alert.silenced_at is None
 
 
 # ──────────────────────────────────────────────

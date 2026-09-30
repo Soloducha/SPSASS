@@ -101,7 +101,20 @@ Corregido en `26863a4`. De paso, la variante `'Activa'` del badge era **código 
 
 **Causa raíz del escape, y es más importante que el bug**: `.github/workflows/ci.yml` tiene jobs de Python, Go y Docker — **ninguno de web**. No hay `npm run build` ni `npm run lint` en el pipeline. Por eso un typecheck roto mergeó sin que nada lo notara. Agregar el job de web al CI es trabajo aparte y queda anotado abajo.
 
-### Verificación por mutación de los tests de regresión de Telegram
+### Segundo defecto tapado: un autofix de eslint que no arreglaba nada
+
+Al revisar el árbol apareció una modificación sin commitear en `actions.ts`: un autofix de eslint había reescrito la anotación de tipo a `import('@/lib/api/rules').TelegramChannelConfig`. Eso **tapaba** el error sin corregirlo — y al descartarlo apareció la causa real:
+
+```
+AlertRuleUpdate['channels'] es AlertRuleChannels | undefined
+AlertRuleUpdate['channels']['telegram']  →  TS2339
+```
+
+`channels` es opcional en `AlertRuleUpdate`, así que indexarlo directamente falla. El fix correcto es `NonNullable<AlertRuleUpdate['channels']>['telegram']`, que declara la restricción en vez de esconderla. Corregido en `55642e3`.
+
+Sin esto, `npm run build` fallaba y el "PASS" del writer era falso dos veces por razones distintas.
+
+## Verificación por mutación de los tests de regresión de Telegram
 
 Quitando `"telegram"` de `ALLOWED_CHANNEL_KEYS`, fallan los 7 tests nuevos — cubren create/update de reglas y también el canal en **jobs** (`TestJobConfigChannelsValidation`), que no estaba en el encargo original y quedó cubierto igual.
 

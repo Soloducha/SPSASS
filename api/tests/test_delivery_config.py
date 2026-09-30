@@ -213,7 +213,8 @@ class TestAlertRuleChannelsValidation:
         rule = AlertRuleUpdate(
             channels={"telegram": {"chat_id": "@new_channel", "silent": False}},
         )
-        assert rule.channels == {"telegram": {"chat_id": "@new_channel", "silent": False}}
+        # Backend only includes silent when True
+        assert rule.channels == {"telegram": {"chat_id": "@new_channel"}}
 
     # ── Invalid cases ──
 

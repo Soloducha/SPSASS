@@ -1,7 +1,7 @@
 """Esquemas Pydantic para API v1 (servidores, ingesta, alertas, procesos, servicios, jobs)."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import (
@@ -220,8 +220,22 @@ class AlertResponse(BaseModel):
     acknowledged_at: datetime | None
     acknowledged_by: UUID | None
     value_at_trigger: float
+    silenced_at: datetime | None = Field(default=None, exclude=True)
+    silenced: bool
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compute_silenced(cls, data: Any) -> Any:
+        """Deriva silenced de silenced_at si viene de un objeto ORM."""
+        if hasattr(data, "silenced_at"):
+            silenced_at = getattr(data, "silenced_at", None)
+            if isinstance(data, dict):
+                data["silenced"] = silenced_at is not None
+            else:
+                return {**data.__dict__, "silenced": silenced_at is not None}
+        return data
 
     model_config = {"from_attributes": True}
 
@@ -245,6 +259,7 @@ class AlertAckResponse(BaseModel):
     acknowledged_at: datetime | None
     resolved_at: datetime | None
     acknowledged_by: UUID | None
+    silenced: bool
 
 
 # ──────────────────────────────────────────────

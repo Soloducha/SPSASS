@@ -73,12 +73,19 @@ class AlertRepository(TenantScopedRepository):
         return alert  # type: ignore[no-any-return]
 
     async def resolve(self, alert_id: UUID) -> Alert | None:
-        """Marca una alerta como resolved."""
+        """Marca una alerta como resolved (acción humana).
+
+        Setea silenced_at = now() para indicar que un operador resolvió
+        la alerta mientras la violación seguía viva y pidió no volver a ser
+        notificado de ESTE episodio. El worker reconcilia silenced_at
+        cuando el target se recupera (limpia el campo, no flippea status).
+        """
         alert = await self.get(alert_id)
         if not alert:
             return None
         alert.status = AlertStatus.RESOLVED
         alert.resolved_at = datetime.now(UTC)
+        alert.silenced_at = datetime.now(UTC)
         await self.session.flush()
         await self.session.refresh(alert)
         return alert  # type: ignore[no-any-return]

@@ -23,6 +23,7 @@ from app.models.metric import Metric, MetricType
 from app.models.server import Server, ServerStatus
 from app.models.tenant import Tenant
 from app.workers.alerts import evaluate_alerts
+from app.workers.delivery_helpers import create_pending_deliveries
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1115,3 +1116,187 @@ def test_alert_timestamp_columns_are_timezone_aware() -> None:
     assert getattr(delivered_type, "timezone", False) is True, (
         "AlertDelivery.delivered_at must be DateTime(timezone=True)"
     )
+
+
+# ──────────────────────────────────────────────
+# Tests for delivery_helpers.create_pending_deliveries
+# ──────────────────────────────────────────────
+class TestCreatePendingDeliveries:
+    """Tests for the shared delivery creation helper."""
+
+    @pytest.mark.asyncio
+    async def test_empty_channels_produces_zero_deliveries(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Empty or None channels mapping produces zero deliveries."""
+
+        tenant = Tenant(name="test", slug=f"test-{uuid4().hex[:8]}")
+        db_session.add(tenant)
+        await db_session.flush()
+
+        alert = Alert(
+            rule_id=None,
+            tenant_id=tenant.id,
+            severity=AlertSeverity.WARNING,
+            status=AlertStatus.OPEN,
+            message="test",
+            triggered_at=datetime.now(UTC),
+            value_at_trigger=1.0,
+        )
+        db_session.add(alert)
+        await db_session.flush()
+
+        # Test None channels
+        create_pending_deliveries(db_session, alert.id, tenant.id, None)
+        await db_session.flush()
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == alert.id)
+        )).all()
+        assert len(deliveries) == 0
+
+        # Test empty dict
+        create_pending_deliveries(db_session, alert.id, tenant.id, {})
+        await db_session.flush()
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == alert.id)
+        )).all()
+        assert len(deliveries) == 0
+
+    @pytest.mark.asyncio
+    async def test_multiple_channels_creates_one_delivery_per_channel(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Channels mapping with multiple keys produces one delivery per key
+        with correct channel, tenant_id, status=pending, and config snapshot."""
+
+        tenant = Tenant(name="test", slug=f"test-{uuid4().hex[:8]}")
+        db_session.add(tenant)
+        await db_session.flush()
+
+        alert = Alert(
+            rule_id=None,
+            tenant_id=tenant.id,
+            severity=AlertSeverity.WARNING,
+            status=AlertStatus.OPEN,
+            message="test",
+            triggered_at=datetime.now(UTC),
+            value_at_trigger=1.0,
+        )
+        db_session.add(alert)
+        await db_session.flush()
+
+        channels = {
+            "email": {"to": ["ops@example.com"]},
+            "webhook": {"url": "https://example.com/hook"},
+            "telegram": {"chat_id": "12345"},
+        }
+        create_pending_deliveries(db_session, alert.id, tenant.id, channels)
+        await db_session.flush()
+
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == alert.id)
+        )).all()
+        assert len(deliveries) == 3
+
+        # Check each delivery has correct fields
+        delivery_by_channel = {d.channel: d for d in deliveries}
+        assert set(delivery_by_channel.keys()) == {"email", "webhook", "telegram"}
+
+        for channel, expected_config in channels.items():
+            d = delivery_by_channel[channel]
+            assert d.alert_id == alert.id
+            assert d.channel == channel
+            assert d.status == "pending"
+            assert d.tenant_id == tenant.id
+            assert d.config == expected_config
+
+    @pytest.mark.asyncio
+    async def test_config_snapshot_captured_by_value(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Config snapshot is captured by value at call time.
+        Mutating the source mapping afterwards does not change persisted config."""
+
+        tenant = Tenant(name="test", slug=f"test-{uuid4().hex[:8]}")
+        db_session.add(tenant)
+        await db_session.flush()
+
+        alert = Alert(
+            rule_id=None,
+            tenant_id=tenant.id,
+            severity=AlertSeverity.WARNING,
+            status=AlertStatus.OPEN,
+            message="test",
+            triggered_at=datetime.now(UTC),
+            value_at_trigger=1.0,
+        )
+        db_session.add(alert)
+        await db_session.flush()
+
+        # Create channels with initial config
+        channels = {
+            "email": {"to": ["original@example.com"]},
+            "webhook": {"url": "https://original.com/hook"},
+        }
+        create_pending_deliveries(db_session, alert.id, tenant.id, channels)
+        await db_session.flush()
+
+        # Mutate the source mapping AFTER calling the helper
+        channels["email"]["to"] = ["mutated@example.com"]
+        channels["webhook"]["url"] = "https://mutated.com/hook"
+        channels["new_channel"] = {"key": "value"}  # Add new key
+
+        # Verify persisted deliveries still have original config
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == alert.id)
+        )).all()
+        assert len(deliveries) == 2  # Only original 2 channels
+
+        delivery_by_channel = {d.channel: d for d in deliveries}
+        assert delivery_by_channel["email"].config == {"to": ["original@example.com"]}
+        assert delivery_by_channel["webhook"].config == {"url": "https://original.com/hook"}
+        assert "new_channel" not in delivery_by_channel
+
+    @pytest.mark.asyncio
+    async def test_sorted_iteration_is_deterministic(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Keys are iterated in sorted order for deterministic delivery creation.
+        All channels are created with correct config regardless of input order."""
+
+        tenant = Tenant(name="test", slug=f"test-{uuid4().hex[:8]}")
+        db_session.add(tenant)
+        await db_session.flush()
+
+        alert = Alert(
+            rule_id=None,
+            tenant_id=tenant.id,
+            severity=AlertSeverity.WARNING,
+            status=AlertStatus.OPEN,
+            message="test",
+            triggered_at=datetime.now(UTC),
+            value_at_trigger=1.0,
+        )
+        db_session.add(alert)
+        await db_session.flush()
+
+        # Provide channels in non-alphabetical order
+        channels = {
+            "zebra": {"config": "z"},
+            "alpha": {"config": "a"},
+            "beta": {"config": "b"},
+        }
+        create_pending_deliveries(db_session, alert.id, tenant.id, channels)
+        await db_session.flush()
+
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == alert.id)
+        )).all()
+        assert len(deliveries) == 3
+
+        # All channels created with correct config (iteration order is sorted internally)
+        delivery_by_channel = {d.channel: d for d in deliveries}
+        assert set(delivery_by_channel.keys()) == {"alpha", "beta", "zebra"}
+        assert delivery_by_channel["alpha"].config == {"config": "a"}
+        assert delivery_by_channel["beta"].config == {"config": "b"}
+        assert delivery_by_channel["zebra"].config == {"config": "z"}

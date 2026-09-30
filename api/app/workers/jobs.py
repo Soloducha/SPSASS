@@ -16,8 +16,9 @@ from croniter import croniter
 from sqlalchemy import select
 
 from app.core.logging import get_logger
-from app.models.alert import Alert, AlertDelivery, AlertSeverity, AlertStatus
+from app.models.alert import Alert, AlertSeverity, AlertStatus
 from app.models.job import Job, JobKind, JobRun, JobStatus
+from app.workers.delivery_helpers import create_pending_deliveries
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,15 +143,12 @@ async def _create_failure_alert(
 
     # Crear AlertDelivery pendientes por cada canal en job.config.channels
     channels = job.config.get("channels", {}) if job.config else {}
-    for channel in sorted(set(channels.keys())):
-        delivery = AlertDelivery(
-            alert_id=alert.id,
-            channel=channel,
-            status="pending",
-            tenant_id=job.tenant_id,
-            config=channels.get(channel),
-        )
-        session.add(delivery)
+    create_pending_deliveries(
+        session=session,
+        alert_id=alert.id,
+        tenant_id=job.tenant_id,
+        channels=channels,
+    )
 
     logger.info(
         "job_failure_alert_created",

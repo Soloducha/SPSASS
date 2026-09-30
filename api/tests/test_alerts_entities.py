@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import pytest
 from app.models.alert import (
     Alert,
+    AlertDelivery,
     AlertOperator,
     AlertRule,
     AlertSeverity,
@@ -27,6 +28,51 @@ from app.models.tenant import Tenant
 from app.workers.alerts import evaluate_alerts
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+# ──────────────────────────────────────────────
+# Helpers de métricas (compartidos con test_alerts.py)
+# ──────────────────────────────────────────────
+
+class _MetricSeed:
+    """Parámetros para _add_metrics (evita PLR0913)."""
+
+    def __init__(
+        self,
+        server: Server,
+        tenant: Tenant,
+        metric_type: MetricType,
+        values: list[float],
+        base_ts: datetime | None = None,
+    ) -> None:
+        self.server = server
+        self.tenant = tenant
+        self.metric_type = metric_type
+        self.values = values
+        self.base_ts = base_ts
+        self.interval_seconds = 10
+
+
+async def _add_metrics(session: AsyncSession, seed: _MetricSeed) -> list[datetime]:
+    """Inserta métricas con timestamps consecutivos. Devuelve lista de timestamps usados."""
+    if seed.base_ts is None:
+        seed.base_ts = datetime.now(UTC) - timedelta(seconds=len(seed.values) * seed.interval_seconds)
+    timestamps = []
+    for i, value in enumerate(seed.values):
+        ts = seed.base_ts + timedelta(seconds=i * seed.interval_seconds)
+        session.add(
+            Metric(
+                ts=ts,
+                server_id=seed.server.id,
+                tenant_id=seed.tenant.id,
+                type=seed.metric_type,
+                value=value,
+            )
+        )
+        timestamps.append(ts)
+    await session.flush()
+    return timestamps
+
 
 # ──────────────────────────────────────────────
 # Helpers de seed
@@ -940,3 +986,179 @@ class TestServerRegression:
         assert alert.status == AlertStatus.OPEN
         assert alert.server_id == server.id
         assert alert.target_entity_id == server.id  # SERVER usa target_entity_id = server_id
+
+
+# ──────────────────────────────────────────────
+# Silencing / Episode dedup tests — all entity types (T4)
+# ──────────────────────────────────────────────
+
+class TestSilencingAllEntities:
+    """Tests de silenciamiento para las 4 entidades: SERVER, SERVICE, PROCESS, JOB.
+
+    Verifica que resolver una alerta mientras la violación sigue activa
+    no produce re-notificación en el siguiente ciclo del worker.
+    """
+
+    @pytest.mark.asyncio
+    async def test_server_silence_while_violating_no_renotify(
+        self, db_session: AsyncSession
+    ) -> None:
+        """SERVER: resolve while violating → no new alert/delivery on re-eval."""
+        tenant, server = await _seed_tenant_server(db_session)
+
+        now = datetime.now(UTC)
+        window_start = now - timedelta(seconds=60)
+        await _add_metrics(
+            db_session,
+            _MetricSeed(server, tenant, MetricType.CPU_USAGE, [85.0, 87.0, 82.0, 88.0, 90.0], base_ts=window_start),
+        )
+
+        rule = await _create_rule(db_session, tenant, EntityType.SERVER, entity_id=server.id)
+
+        created1 = await evaluate_alerts(db_session)
+        assert created1 == 1
+
+        alert = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        assert alert is not None
+        original_alert_id = alert.id
+        assert alert.status == AlertStatus.OPEN
+
+        # Humano resuelve (simula repo.resolve: status=RESOLVED + silenced_at)
+        alert.status = AlertStatus.RESOLVED
+        alert.resolved_at = datetime.now(UTC)
+        alert.silenced_at = datetime.now(UTC)
+        await db_session.flush()
+
+        # Violación sigue activa, worker re-evalúa
+        created2 = await evaluate_alerts(db_session)
+        assert created2 == 0
+
+        alert2 = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        assert alert2.id == original_alert_id
+        assert alert2.status == AlertStatus.RESOLVED
+        assert alert2.silenced_at is not None
+
+        # Sin nuevos deliveries
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == original_alert_id)
+        )).all()
+        assert len(deliveries) == 1
+
+    @pytest.mark.asyncio
+    async def test_service_silence_while_violating_no_renotify(
+        self, db_session: AsyncSession
+    ) -> None:
+        """SERVICE: resolve while violating → no new alert/delivery on re-eval."""
+        tenant, server = await _seed_tenant_server(db_session)
+
+        svc = await _seed_service(
+            db_session, tenant, server,
+            desired_state=ServiceState.RUNNING,
+            last_status=ServiceState.STOPPED,
+            last_checked_at=datetime.now(UTC),
+        )
+
+        rule = await _create_rule(db_session, tenant, EntityType.SERVICE, entity_id=svc.id)
+
+        created1 = await evaluate_alerts(db_session)
+        assert created1 == 1
+
+        alert = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        original_alert_id = alert.id
+
+        # Humano resuelve mientras servicio sigue STOPPED
+        alert.status = AlertStatus.RESOLVED
+        alert.resolved_at = datetime.now(UTC)
+        alert.silenced_at = datetime.now(UTC)
+        await db_session.flush()
+
+        # Re-evaluar: servicio sigue en violación
+        created2 = await evaluate_alerts(db_session)
+        assert created2 == 0
+
+        alert2 = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        assert alert2.id == original_alert_id
+        assert alert2.status == AlertStatus.RESOLVED
+        assert alert2.silenced_at is not None
+
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == original_alert_id)
+        )).all()
+        assert len(deliveries) == 1
+
+    @pytest.mark.asyncio
+    async def test_process_silence_while_violating_no_renotify(
+        self, db_session: AsyncSession
+    ) -> None:
+        """PROCESS: resolve while violating → no new alert/delivery on re-eval."""
+        tenant, server = await _seed_tenant_server(db_session)
+
+        proc = await _seed_process(
+            db_session, tenant, server,
+            expected_count=2, last_count=1, last_checked_at=datetime.now(UTC),
+        )
+
+        rule = await _create_rule(db_session, tenant, EntityType.PROCESS, entity_id=proc.id)
+
+        created1 = await evaluate_alerts(db_session)
+        assert created1 == 1
+
+        alert = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        original_alert_id = alert.id
+
+        alert.status = AlertStatus.RESOLVED
+        alert.resolved_at = datetime.now(UTC)
+        alert.silenced_at = datetime.now(UTC)
+        await db_session.flush()
+
+        created2 = await evaluate_alerts(db_session)
+        assert created2 == 0
+
+        alert2 = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        assert alert2.id == original_alert_id
+        assert alert2.silenced_at is not None
+
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == original_alert_id)
+        )).all()
+        assert len(deliveries) == 1
+
+    @pytest.mark.asyncio
+    async def test_job_silence_while_violating_no_renotify(
+        self, db_session: AsyncSession
+    ) -> None:
+        """JOB: resolve while violating → no new alert/delivery on re-eval."""
+        tenant, server = await _seed_tenant_server(db_session)
+
+        job = await _seed_job(db_session, tenant, server, name="backup-job")
+        await _seed_job_run(
+            db_session, job,
+            status="failed", exit_code=1,
+            started_at=datetime.now(UTC) - timedelta(seconds=30),
+        )
+
+        rule = await _create_rule(db_session, tenant, EntityType.JOB, entity_id=job.id, duration_s=120)
+
+        created1 = await evaluate_alerts(db_session)
+        assert created1 == 1
+
+        alert = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        original_alert_id = alert.id
+
+        alert.status = AlertStatus.RESOLVED
+        alert.resolved_at = datetime.now(UTC)
+        alert.silenced_at = datetime.now(UTC)
+        await db_session.flush()
+
+        # Job sigue fallando en la ventana
+        created2 = await evaluate_alerts(db_session)
+        assert created2 == 0
+
+        alert2 = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        assert alert2.id == original_alert_id
+        assert alert2.silenced_at is not None
+
+        deliveries = (await db_session.scalars(
+            select(AlertDelivery).where(AlertDelivery.alert_id == original_alert_id)
+        )).all()
+        assert len(deliveries) == 1

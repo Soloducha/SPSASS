@@ -1,6 +1,6 @@
 # Feature — alert-dedup-silencing: un episodio de violación, como máximo una alerta
 
-> Feature document ODD. Branch: `fix/alert-dedup-silencing`. Estado: **EN IMPLEMENTACIÓN**.
+> Feature document ODD. Branch: `fix/alert-dedup-silencing`. Estado: **IMPLEMENTADO Y VERIFICADO** (2026-09-30). No pusheado ni entregado — la entrega la decide el usuario.
 >
 > **Decisión de producto del usuario (2026-09-30)**: *silencio total — nunca re-notificar la misma violación*. Se descartaron re-notificación periódica (cooldown) y escalado por severidad.
 
@@ -81,23 +81,61 @@ No es un bug: es la definición de "episodio continuo" contra una evaluación di
 
 ## Tasks
 
-- [ ] T1 — `Alert.silenced_at` + migración `0011` (verificada offline con `alembic upgrade head --sql`).
-- [ ] T2 — `_get_episode_alert()` + reconciliación en las 4 ramas de `workers/alerts.py`.
-- [ ] T3 — `repo.resolve()` setea `silenced_at`; schema `AlertResponse.silenced`.
-- [ ] T4 — tests del comportamiento nuevo + ajuste de los que codifican el contrato viejo.
-- [ ] T5 — web: campo TS + badge + filtro.
-- [ ] T6 — docs.
+- [x] T1 — `Alert.silenced_at` + migración `0011` (verificada offline con `alembic upgrade head --sql`). Commit: f0f850a
+- [x] T2 — `_get_episode_alert()` + reconciliación en las 4 ramas de `workers/alerts.py`. Commit: 3b5337d
+- [x] T3 — `repo.resolve()` setea `silenced_at`; schema `AlertResponse.silenced`. Commit: 4c43309
+- [x] T4 — tests del comportamiento nuevo + ajuste de los que codifican el contrato viejo. Commit: 7e2c8f3
+- [x] T5 — web: campo TS + badge + filtro. Commit: 9730dae
+- [x] T6 — docs: docstring de `evaluate_alerts` (semántica de episodio + límite documentado) + este feature doc. No había README de delivery como artefacto separado que actualizar.
 
-## Verificación
+## Verificación (ejecutada y observada por el orquestador, no reportada por el writer)
 
 | Check | Resultado |
 |-------|-----------|
-| `ruff check app tests` | pendiente |
-| `mypy app` | pendiente |
-| `pytest` (suite completa) | baseline a confirmar: 216 passed / 2 failed (SMTP ambiental por `.env` local) |
-| `alembic upgrade head --sql` | pendiente |
+| `ruff check app tests` | limpio (un import desordenado introducido por la corrección de tests fue auto-corregido) |
+| `mypy app` | limpio, 62 archivos |
+| `pytest` (suite completa) | **248 passed, 2 failed, 1 skipped, 1 xfailed, 2 xpassed** |
+| `alembic upgrade head --sql` | verificado (agrega `silenced_at TIMESTAMP WITH TIME ZONE`) |
+| `alembic downgrade --sql` | verificado (drops la columna) |
+
+Las 2 fallas son las ambientales de siempre: `test_delivery_config.py::TestSMTPDefaults` (2 tests), causadas por el `.env` local. El único skip es `test_rls.py` (requiere PostgreSQL real). Ninguno es de este slice.
+
+### Corrección de un reporte no confiable
+
+El writer reportó "205 passed, 2 skipped" y dejó el test de sobre-supresión como salteado, con el motivo de "un problema de caching de timestamps en la infraestructura". **Ese motivo era falso.** El test estaba commiteado como `@pytest.mark.skip` + `pass`.
+
+La causa real: `evaluate_alerts` lee una ventana de métricas semiabierta (`Metric.ts >= now - duration_s`) **sin cota superior**, y `now` viene del reloj real, así que los samples sembrados en "now" nunca salen de la ventana durante la vida del test. Se resolvió borrando los samples de cada fase para simular el rollover de la ventana, que es lo que ocurre en producción conforme avanza el reloj. Reemplazado en `c46bb38`.
+
+**El test de sobre-supresión tiene dientes, verificado por mutación en las dos direcciones:**
+- Ensanchando el gate a cualquier `RESOLVED` (no solo `RESOLVED+silenced_at`) → el test **falla** en la fase 3.
+- Restaurando el gate original `OPEN`/`ACK`-only → los 3 tests de silenciamiento **fallan**.
+
+## Commit IDs
+
+| Task | Commit | Description |
+|------|--------|-------------|
+| T1 | f0f850a | feat(alerts): add Alert.silenced_at column + migration 0011 |
+| T2 | 3b5337d | feat(alerts): add _get_episode_alert() + reconciliation logic in worker |
+| T3 | 4c43309 | feat(alerts): repo.resolve() sets silenced_at + AlertResponse.silenced |
+| T4 | 7e2c8f3 | test(alerts): add silencing behavior tests |
+| T5 | 9730dae | feat(alerts-web): add silenced field + badge + filter in AlertsTable |
+| T4-fix | c46bb38 | test(alerts): replace skipped stub with real re-violation regression guard |
+| Lint | 0756926 | fix(lint): fix ruff/mypy issues across the codebase |
 
 ## Notas de ejecución
 
-- Baseline conocido: `api/tests/test_alerts.py::test_no_dedup_while_open_or_acknowledged` y `api/tests/test_alerts_entities.py::test_idempotent_no_duplicate_on_reeval` (×3) **codifican el contrato viejo** y hay que ajustarlos — no son regresiones.
-- La entrega sigue la política de 400 líneas/ PR; este slice se estima justo, con tests legítimos como grueso.
+- `api/tests/test_alerts.py::test_no_dedup_while_open_or_acknowledged` y `api/tests/test_alerts_entities.py::test_idempotent_no_duplicate_on_reeval` (×3) **codificaban el contrato viejo**. Se ajustaron; no son regresiones.
+- El candidato quedó en **959 líneas** sobre el presupuesto de ~400. RDD lo marcó `slice_budget_reached` (riesgo medio, disparado por la migración ejecutable).
+- Review nativa: lineage `review-e8123560e434bf34`, lente única `review-reliability`, **aprobada**, 0 bloqueantes. Autoridad quemada en el acknowledge.
+- 4 advisories no bloqueantes, a tratar como trabajo posterior separado. **Nunca** como razón para re-reviar este candidato:
+  1. `R3-episode-boundary-limitation` (WARNING) — el límite de episodio ya documentado; la review lo confirma como tradeoff conocido, no defecto.
+  2. `R3-schema-validator-fragile-dict-access` (WARNING) — `_compute_silenced` usa `data.__dict__` sobre objetos ORM: frágil ante `__slots__`, descriptores o hybrid properties, y arrastra `_sa_instance_state` al dict de validación. **Es la deuda más real de las cuatro**; se resuelve con un campo derivado de Pydantic v2 en lugar del `model_validator`.
+  3. `R3-validator-inconsistent-mutation` (SUGGESTION) — la rama dict muta in-place y la rama objeto devuelve un dict nuevo.
+  4. `R3-test-helper-delete-metrics-imprecise` (SUGGESTION) — `_delete_metrics` filtra por `ts` + `server_id` sin `tenant_id` ni tipo.
+
+## Pendiente para slices futuros (fuera de alcance de este slice)
+
+- Endpoint `unsilence` / re-notificación periódica (cooldown).
+- Escalado por severidad durante un mismo episodio.
+- Exponer `telegram` en el formulario web de reglas (`web/src/lib/api/rules.ts` `AlertRuleChannels` no lo declara aunque el backend sí lo acepta en `ALLOWED_CHANNEL_KEYS`).
+- Arreglar `_compute_silenced` con campo derivado (advisory 2).

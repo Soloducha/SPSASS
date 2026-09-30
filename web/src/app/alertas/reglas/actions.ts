@@ -82,7 +82,7 @@ function validateCreateRuleData(data: AlertRuleCreate): string | null {
     return 'Severidad no válida';
   }
   if (!data.channels || Object.keys(data.channels).length === 0) {
-    return 'Se requiere al menos un canal (email o webhook)';
+    return 'Se requiere al menos un canal (email, webhook o telegram)';
   }
   if (data.channels.email) {
     if (!Array.isArray(data.channels.email.to) || data.channels.email.to.length === 0) {
@@ -106,6 +106,26 @@ function validateCreateRuleData(data: AlertRuleCreate): string | null {
       new URL(data.channels.webhook.url);
     } catch {
       return 'URL de webhook inválida';
+    }
+  }
+  if (data.channels.telegram) {
+    if (typeof data.channels.telegram.chat_id !== 'string' || data.channels.telegram.chat_id.trim().length === 0) {
+      return 'El canal telegram requiere un chat_id';
+    }
+    // Client-side shape validation: numeric ID (^-?\d+$) or @username (^@[A-Za-z0-9_]{5,32}$)
+    const chatId = data.channels.telegram.chat_id.trim();
+    const isNumericId = /^-?\d+$/.test(chatId);
+    const isUsername = /^@[A-Za-z0-9_]{5,32}$/.test(chatId);
+    if (!isNumericId && !isUsername) {
+      return 'chat_id de telegram debe ser un ID numérico (ej: -1001234567890) o un username (ej: @canal_bot)';
+    }
+    if (data.channels.telegram.thread_id !== undefined) {
+      if (typeof data.channels.telegram.thread_id !== 'number' || !Number.isInteger(data.channels.telegram.thread_id) || data.channels.telegram.thread_id < 1) {
+        return 'thread_id de telegram debe ser un entero positivo';
+      }
+    }
+    if (data.channels.telegram.silent !== undefined && typeof data.channels.telegram.silent !== 'boolean') {
+      return 'silent de telegram debe ser booleano';
     }
   }
   return null;
@@ -132,7 +152,7 @@ function validateUpdateRuleData(data: AlertRuleUpdate): string | null {
   }
   if (data.channels !== undefined) {
     if (!data.channels || Object.keys(data.channels).length === 0) {
-      return 'Se requiere al menos un canal (email o webhook)';
+      return 'Se requiere al menos un canal (email, webhook o telegram)';
     }
     if (data.channels.email) {
       if (!Array.isArray(data.channels.email.to) || data.channels.email.to.length === 0) {
@@ -155,6 +175,26 @@ function validateUpdateRuleData(data: AlertRuleUpdate): string | null {
         new URL(data.channels.webhook.url);
       } catch {
         return 'URL de webhook inválida';
+      }
+    }
+    if (data.channels.telegram) {
+      if (typeof data.channels.telegram.chat_id !== 'string' || data.channels.telegram.chat_id.trim().length === 0) {
+        return 'El canal telegram requiere un chat_id';
+      }
+      // Client-side shape validation: numeric ID (^-?\d+$) or @username (^@[A-Za-z0-9_]{5,32}$)
+      const chatId = data.channels.telegram.chat_id.trim();
+      const isNumericId = /^-?\d+$/.test(chatId);
+      const isUsername = /^@[A-Za-z0-9_]{5,32}$/.test(chatId);
+      if (!isNumericId && !isUsername) {
+        return 'chat_id de telegram debe ser un ID numérico (ej: -1001234567890) o un username (ej: @canal_bot)';
+      }
+      if (data.channels.telegram.thread_id !== undefined) {
+        if (typeof data.channels.telegram.thread_id !== 'number' || !Number.isInteger(data.channels.telegram.thread_id) || data.channels.telegram.thread_id < 1) {
+          return 'thread_id de telegram debe ser un entero positivo';
+        }
+      }
+      if (data.channels.telegram.silent !== undefined && typeof data.channels.telegram.silent !== 'boolean') {
+        return 'silent de telegram debe ser booleano';
       }
     }
   }
@@ -196,6 +236,9 @@ export async function createAlertRuleAction(
   const emailToRaw = formData.get('email_to') as string;
   const webhookUrl = formData.get('webhook_url') as string;
   const webhookHeadersRaw = formData.get('webhook_headers') as string;
+  const telegramChatIdRaw = formData.get('telegram_chat_id') as string;
+  const telegramThreadIdRaw = formData.get('telegram_thread_id') as string;
+  const telegramSilentRaw = formData.get('telegram_silent') as string;
 
   const channels: AlertRuleCreate['channels'] = {};
 
@@ -216,6 +259,21 @@ export async function createAlertRuleAction(
       }
     }
     channels.webhook = { url: webhookUrl.trim(), headers };
+  }
+
+  if (telegramChatIdRaw && telegramChatIdRaw.trim().length > 0) {
+    const chatId = telegramChatIdRaw.trim();
+    const telegramConfig: AlertRuleCreate['channels']['telegram'] = { chat_id: chatId };
+    if (telegramThreadIdRaw && telegramThreadIdRaw.trim().length > 0) {
+      const threadId = parseInt(telegramThreadIdRaw.trim(), 10);
+      if (!isNaN(threadId) && threadId > 0) {
+        telegramConfig.thread_id = threadId;
+      }
+    }
+    if (telegramSilentRaw === 'true') {
+      telegramConfig.silent = true;
+    }
+    channels.telegram = telegramConfig;
   }
 
   const ruleData: AlertRuleCreate = {
@@ -291,6 +349,9 @@ export async function updateAlertRuleAction(
   const emailToRaw = formData.get('email_to') as string | null;
   const webhookUrl = formData.get('webhook_url') as string | null;
   const webhookHeadersRaw = formData.get('webhook_headers') as string | null;
+  const telegramChatIdRaw = formData.get('telegram_chat_id') as string | null;
+  const telegramThreadIdRaw = formData.get('telegram_thread_id') as string | null;
+  const telegramSilentRaw = formData.get('telegram_silent') as string | null;
 
   const channels: AlertRuleUpdate['channels'] = {};
 
@@ -317,6 +378,24 @@ export async function updateAlertRuleAction(
   } else if (webhookUrl === '') {
     // Explicitly clear webhook channel
     channels.webhook = undefined;
+  }
+
+  if (telegramChatIdRaw !== null && telegramChatIdRaw.trim().length > 0) {
+    const chatId = telegramChatIdRaw.trim();
+    const telegramConfig: AlertRuleUpdate['channels']['telegram'] = { chat_id: chatId };
+    if (telegramThreadIdRaw !== null && telegramThreadIdRaw.trim().length > 0) {
+      const threadId = parseInt(telegramThreadIdRaw.trim(), 10);
+      if (!isNaN(threadId) && threadId > 0) {
+        telegramConfig.thread_id = threadId;
+      }
+    }
+    if (telegramSilentRaw === 'true') {
+      telegramConfig.silent = true;
+    }
+    channels.telegram = telegramConfig;
+  } else if (telegramChatIdRaw === '') {
+    // Explicitly clear telegram channel
+    channels.telegram = undefined;
   }
 
   const ruleData: AlertRuleUpdate = {};

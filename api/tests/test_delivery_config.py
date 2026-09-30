@@ -2,7 +2,14 @@
 
 
 import pytest
-from app.api.v1.schemas import AlertRuleCreate, AlertRuleUpdate, EmailChannel, WebhookChannel
+from app.api.v1.schemas import (
+    AlertRuleCreate,
+    AlertRuleUpdate,
+    EmailChannel,
+    JobCreate,
+    JobUpdate,
+    WebhookChannel,
+)
 from app.core.config import Settings, get_settings
 from pydantic import ValidationError
 
@@ -259,3 +266,205 @@ class TestAlertRuleChannelsValidation:
         with pytest.raises(ValidationError) as exc:
             AlertRuleUpdate(channels={"email": {"to": []}})
         assert "to" in str(exc.value).lower()
+
+
+class TestJobConfigChannelsValidation:
+    """Tests for JobCreate/Update config.channels validation."""
+
+    # ── Valid cases ──
+
+    def test_create_valid_email_channel_in_config(self) -> None:
+        """Create with valid email channel in config.channels passes and normalizes."""
+        job = JobCreate(
+            server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+            name="test-job",
+            kind="batch",  # type: ignore[arg-type]
+            command="echo hello",
+            config={"channels": {"email": {"to": ["ops@example.com"]}}},
+        )
+        assert job.config == {"channels": {"email": {"to": ["ops@example.com"]}}}
+
+    def test_create_valid_webhook_channel_in_config(self) -> None:
+        """Create with valid webhook channel in config.channels passes and normalizes."""
+        job = JobCreate(
+            server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+            name="test-job",
+            kind="batch",  # type: ignore[arg-type]
+            command="echo hello",
+            config={"channels": {"webhook": {"url": "https://example.com/webhook", "headers": {"X-Custom": "value"}}}},
+        )
+        assert job.config == {"channels": {"webhook": {"url": "https://example.com/webhook", "headers": {"X-Custom": "value"}}}}
+
+    def test_create_valid_telegram_channel_in_config(self) -> None:
+        """Create with valid telegram channel in config.channels passes and normalizes."""
+        job = JobCreate(
+            server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+            name="test-job",
+            kind="batch",  # type: ignore[arg-type]
+            command="echo hello",
+            config={"channels": {"telegram": {"chat_id": "123456789", "thread_id": 42, "silent": True}}},
+        )
+        assert job.config == {"channels": {"telegram": {"chat_id": "123456789", "thread_id": 42, "silent": True}}}
+
+    def test_create_config_without_channels_key(self) -> None:
+        """Create with config but no channels key passes (free-form config)."""
+        job = JobCreate(
+            server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+            name="test-job",
+            kind="batch",  # type: ignore[arg-type]
+            command="echo hello",
+            config={"retention_days": 30, "custom_key": "value"},
+        )
+        assert job.config == {"retention_days": 30, "custom_key": "value"}
+
+    def test_create_config_empty_channels_dict(self) -> None:
+        """Create with explicit empty channels dict passes."""
+        job = JobCreate(
+            server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+            name="test-job",
+            kind="batch",  # type: ignore[arg-type]
+            command="echo hello",
+            config={"channels": {}},
+        )
+        assert job.config == {"channels": {}}
+
+    def test_create_default_empty_config(self) -> None:
+        """Create with default empty config passes."""
+        job = JobCreate(
+            server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+            name="test-job",
+            kind="batch",  # type: ignore[arg-type]
+            command="echo hello",
+        )
+        assert job.config == {}
+
+    def test_update_valid_channels_in_config(self) -> None:
+        """Update with valid channels in config passes and normalizes."""
+        job = JobUpdate(config={"channels": {"email": {"to": ["new@example.com"]}}})
+        assert job.config == {"channels": {"email": {"to": ["new@example.com"]}}}
+
+    def test_update_none_config(self) -> None:
+        """Update with config=None passes (no change)."""
+        job = JobUpdate(config=None)
+        assert job.config is None
+
+    def test_update_config_preserves_other_keys_with_channels(self) -> None:
+        """Update with channels plus other free-form config keys preserves those keys."""
+        job = JobUpdate(config={"retention_days": 60, "channels": {"email": {"to": ["ops@example.com"]}}, "custom": "value"})
+        assert job.config == {"retention_days": 60, "channels": {"email": {"to": ["ops@example.com"]}}, "custom": "value"}
+
+    def test_update_config_without_channels_preserves_keys(self) -> None:
+        """Update with config but no channels key preserves all keys."""
+        job = JobUpdate(config={"retention_days": 60, "custom_key": "value"})
+        assert job.config == {"retention_days": 60, "custom_key": "value"}
+
+    # ── Invalid cases ──
+
+    def test_create_unknown_channel_key_in_config_fails(self) -> None:
+        """Create with unknown channel key in config.channels fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobCreate(
+                server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+                name="test-job",
+                kind="batch",  # type: ignore[arg-type]
+                command="echo hello",
+                config={"channels": {"slack": {"webhook_url": "https://hooks.slack.com/..."}}},
+            )
+        assert "unknown channel keys" in str(exc.value).lower()
+        assert "slack" in str(exc.value).lower()
+
+    def test_create_email_missing_to_in_config_fails(self) -> None:
+        """Create with email channel missing 'to' in config.channels fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobCreate(
+                server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+                name="test-job",
+                kind="batch",  # type: ignore[arg-type]
+                command="echo hello",
+                config={"channels": {"email": {}}},
+            )
+        assert "to" in str(exc.value).lower()
+
+    def test_create_webhook_missing_url_in_config_fails(self) -> None:
+        """Create with webhook channel missing 'url' in config.channels fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobCreate(
+                server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+                name="test-job",
+                kind="batch",  # type: ignore[arg-type]
+                command="echo hello",
+                config={"channels": {"webhook": {}}},
+            )
+        assert "url" in str(exc.value).lower()
+
+    def test_create_telegram_missing_chat_id_in_config_fails(self) -> None:
+        """Create with telegram channel missing 'chat_id' in config.channels fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobCreate(
+                server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+                name="test-job",
+                kind="batch",  # type: ignore[arg-type]
+                command="echo hello",
+                config={"channels": {"telegram": {}}},
+            )
+        assert "chat_id" in str(exc.value).lower()
+
+    def test_create_invalid_webhook_url_in_config_fails(self) -> None:
+        """Create with invalid webhook URL in config.channels fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobCreate(
+                server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+                name="test-job",
+                kind="batch",  # type: ignore[arg-type]
+                command="echo hello",
+                config={"channels": {"webhook": {"url": "not-a-url"}}},
+            )
+        assert "url" in str(exc.value).lower()
+
+    def test_create_invalid_email_format_in_config_fails(self) -> None:
+        """Create with invalid email format in config.channels fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobCreate(
+                server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+                name="test-job",
+                kind="batch",  # type: ignore[arg-type]
+                command="echo hello",
+                config={"channels": {"email": {"to": ["not-an-email"]}}},
+            )
+        assert "to" in str(exc.value).lower()
+
+    def test_create_non_dict_config_fails(self) -> None:
+        """Create with non-dict config fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobCreate(
+                server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+                name="test-job",
+                kind="batch",  # type: ignore[arg-type]
+                command="echo hello",
+                config="not-a-dict",  # type: ignore[arg-type]
+            )
+        assert "config must be a dict" in str(exc.value).lower()
+
+    def test_create_non_dict_channels_in_config_fails(self) -> None:
+        """Create with non-dict channels in config fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobCreate(
+                server_id="00000000-0000-0000-0000-000000000001",  # type: ignore[arg-type]
+                name="test-job",
+                kind="batch",  # type: ignore[arg-type]
+                command="echo hello",
+                config={"channels": "not-a-dict"},  # type: ignore[arg-type]
+            )
+        assert "config.channels must be a dict" in str(exc.value).lower()
+
+    def test_update_non_dict_config_fails(self) -> None:
+        """Update with non-dict config fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobUpdate(config="not-a-dict")  # type: ignore[arg-type]
+        assert "config must be a dict" in str(exc.value).lower()
+
+    def test_update_non_dict_channels_in_config_fails(self) -> None:
+        """Update with non-dict channels in config fails."""
+        with pytest.raises(ValidationError) as exc:
+            JobUpdate(config={"channels": "not-a-dict"})  # type: ignore[arg-type]
+        assert "config.channels must be a dict" in str(exc.value).lower()

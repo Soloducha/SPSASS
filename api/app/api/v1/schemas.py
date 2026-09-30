@@ -358,6 +358,24 @@ class JobCreate(BaseModel):
     status: JobStatus = JobStatus.ACTIVE
     config: dict = Field(default_factory=dict)
 
+    @field_validator("config", mode="before")
+    @classmethod
+    def validate_config_channels(cls, v: dict) -> dict:
+        """Valida y normaliza el sub-dict channels dentro de config si está presente."""
+        if not isinstance(v, dict):
+            raise ValueError("config must be a dict")  # noqa: TRY004 - Pydantic v2 mode="before" validators need ValueError
+
+        # Only validate channels if the key is explicitly present
+        if "channels" in v:
+            channels = v["channels"]
+            if not isinstance(channels, dict):
+                raise ValueError("config.channels must be a dict")  # noqa: TRY004 - Pydantic v2 mode="before" validators need ValueError
+            # Validate and normalize channels, but allow empty dict
+            validated_channels = _validate_channels_dict(channels)
+            # Replace with normalized version (may be empty)
+            v = {**v, "channels": validated_channels}
+        return v
+
     @model_validator(mode="after")
     def validate_cron_schedule(self) -> "JobCreate":
         """Valida que schedule_cron esté presente para jobs CRON."""
@@ -378,6 +396,26 @@ class JobUpdate(BaseModel):
     auto_restart: bool | None = None
     status: JobStatus | None = None
     config: dict | None = None
+
+    @field_validator("config", mode="before")
+    @classmethod
+    def validate_config_channels(cls, v: dict | None) -> dict | None:
+        """Valida y normaliza el sub-dict channels dentro de config si está presente."""
+        if v is None:
+            return None
+        if not isinstance(v, dict):
+            raise ValueError("config must be a dict")  # noqa: TRY004 - Pydantic v2 mode="before" validators need ValueError
+
+        # Only validate channels if the key is explicitly present
+        if "channels" in v:
+            channels = v["channels"]
+            if not isinstance(channels, dict):
+                raise ValueError("config.channels must be a dict")  # noqa: TRY004 - Pydantic v2 mode="before" validators need ValueError
+            # Validate and normalize channels, but allow empty dict
+            validated_channels = _validate_channels_dict(channels)
+            # Replace with normalized version (may be empty), preserve other keys
+            v = {**v, "channels": validated_channels}
+        return v
 
 
 class JobResponse(BaseModel):

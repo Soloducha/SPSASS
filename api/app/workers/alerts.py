@@ -79,23 +79,34 @@ def _describe_condition(rule: AlertRule) -> str:
     return f"{metric_name} {op_str} {rule.threshold} sustained >= {rule.duration_s}s"
 
 
-async def _get_active_alert(
+async def _get_episode_alert(
     session: AsyncSession,
     rule_id: "UUID",
     target_entity_id: "UUID | None",
     server_id: "UUID | None" = None,
 ) -> Alert | None:
-    """Busca una alerta activa (OPEN/ACKNOWLEDGED) para una regla + target.
+    """Busca una alerta de episodio para deduplicación.
+
+    Un "episodio" es la ventana continua de violación. Esta función devuelve
+    alertas que BLOQUEAN la creación de una nueva:
+    - OPEN o ACKNOWLEDGED (alerta activa normal), O
+    - RESOLVED con silenced_at NOT NULL (humano resolvió mientras violaba y
+      pidió silencio para este episodio).
 
     Para SERVER: usa server_id + rule_id.
     Para SERVICE/PROCESS/JOB: usa target_entity_id + rule_id (server_id puede ser None).
+
+    La resolución automática (cuando la violación cesa) SOLO considera
+    OPEN/ACKNOWLEDGED — ver _resolve_alert y ramas de evaluación.
     """
     if target_entity_id is not None:
         return await session.scalar(  # type: ignore[no-any-return]
             select(Alert).where(
                 Alert.rule_id == rule_id,
                 Alert.target_entity_id == target_entity_id,
-                Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED]),
+                # Episodio: OPEN/ACK o RESOLVED+silenced_at (silenciado por humano)
+                (Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED])) |
+                ((Alert.status == AlertStatus.RESOLVED) & (Alert.silenced_at.is_not(None))),
             )
         )
     # Fallback para compatibilidad con alertas antiguas (SERVER sin target_entity_id)
@@ -103,7 +114,8 @@ async def _get_active_alert(
         select(Alert).where(
             Alert.rule_id == rule_id,
             Alert.server_id == server_id,
-            Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED]),
+            (Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED])) |
+            ((Alert.status == AlertStatus.RESOLVED) & (Alert.silenced_at.is_not(None))),
         )
     )
 
@@ -159,7 +171,13 @@ async def _create_alert_and_deliveries(params: _AlertCreateParams) -> Alert:
 
 
 async def _resolve_alert(alert: Alert, now: datetime, rule_id: "UUID") -> None:
-    """Marca una alerta como RESOLVED."""
+    """Marca una alerta como RESOLVED (auto-resolución normal).
+
+    Nota: esto es para resolución AUTOMÁTICA cuando la violación cesa.
+    NO pone silenced_at — ese campo solo lo setea repo.resolve() cuando
+    un humano resuelve vía API. El worker limpia silenced_at en la
+    reconciliación (rama else de evaluación) cuando el target se recupera.
+    """
     alert.status = AlertStatus.RESOLVED
     alert.resolved_at = now
     logger.info(
@@ -200,11 +218,11 @@ async def _evaluate_rule_for_server(ctx: _ServerEvalContext) -> bool:
     # Condición sostenida: TODOS los samples deben cumplir
     cond_ok = all(_matches(rule.operator, value, rule.threshold) for value in values)
 
-    # Buscar alerta activa existente (por server_id para compatibilidad)
-    active_alert = await _get_active_alert(session, rule.id, None, server_id)
+    # Buscar alerta de episodio (dedup gate: OPEN/ACK o RESOLVED+silenced_at)
+    episode = await _get_episode_alert(session, rule.id, None, server_id)
 
     if cond_ok:
-        if active_alert is None:
+        if episode is None:
             await _create_alert_and_deliveries(_AlertCreateParams(
                 session=session,
                 rule=rule,
@@ -216,9 +234,24 @@ async def _evaluate_rule_for_server(ctx: _ServerEvalContext) -> bool:
                 target_entity_id=server_id,  # Para SERVER, target_entity_id = server_id
             ))
             return True
-        logger.debug("alert_already_open", alert_id=str(active_alert.id), rule_id=str(rule.id))
-    elif active_alert is not None:
-        await _resolve_alert(active_alert, now, rule.id)
+        logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id))
+    # No hay violación: reconciliar
+    elif episode is not None:
+        if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+            # Auto-resolución normal: la violación cesó
+            await _resolve_alert(episode, now, rule.id)
+        else:
+            # episode.status == RESOLVED y silenced_at NOT NULL
+            # El target se recuperó mientras la alerta estaba silenciada:
+            # limpiar silenced_at para cerrar el episodio (no flippear status)
+            episode.silenced_at = None
+            logger.info(
+                "alert_episode_closed",
+                alert_id=str(episode.id),
+                rule_id=str(rule.id),
+                tenant_id=str(episode.tenant_id),
+                reason="target_recovered_while_silenced",
+            )
     return False
 
 
@@ -244,11 +277,11 @@ async def _evaluate_rule_for_service(
     # Violación: estado reportado != desired_state
     is_violating = service.last_status != service.desired_state
 
-    # Buscar alerta activa existente por target_entity_id (service.id)
-    active_alert = await _get_active_alert(session, rule.id, service.id)
+    # Buscar alerta de episodio (dedup gate)
+    episode = await _get_episode_alert(session, rule.id, service.id)
 
     if is_violating:
-        if active_alert is None:
+        if episode is None:
             await _create_alert_and_deliveries(_AlertCreateParams(
                 session=session,
                 rule=rule,
@@ -260,9 +293,20 @@ async def _evaluate_rule_for_service(
                 target_entity_id=service.id,
             ))
             return True
-        logger.debug("alert_already_open", alert_id=str(active_alert.id), rule_id=str(rule.id), service_id=str(service.id))
-    elif active_alert is not None:
-        await _resolve_alert(active_alert, now, rule.id)
+        logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id), service_id=str(service.id))
+    # No hay violación: reconciliar
+    elif episode is not None:
+        if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+            await _resolve_alert(episode, now, rule.id)
+        else:
+            episode.silenced_at = None
+            logger.info(
+                "alert_episode_closed",
+                alert_id=str(episode.id),
+                rule_id=str(rule.id),
+                tenant_id=str(episode.tenant_id),
+                reason="target_recovered_while_silenced",
+            )
     return False
 
 
@@ -288,11 +332,11 @@ async def _evaluate_rule_for_process(
     # Violación: count reportado < expected_count
     is_violating = process.last_count < process.expected_count
 
-    # Buscar alerta activa existente por target_entity_id (process.id)
-    active_alert = await _get_active_alert(session, rule.id, process.id)
+    # Buscar alerta de episodio (dedup gate)
+    episode = await _get_episode_alert(session, rule.id, process.id)
 
     if is_violating:
-        if active_alert is None:
+        if episode is None:
             await _create_alert_and_deliveries(_AlertCreateParams(
                 session=session,
                 rule=rule,
@@ -304,9 +348,20 @@ async def _evaluate_rule_for_process(
                 target_entity_id=process.id,
             ))
             return True
-        logger.debug("alert_already_open", alert_id=str(active_alert.id), rule_id=str(rule.id), process_id=str(process.id))
-    elif active_alert is not None:
-        await _resolve_alert(active_alert, now, rule.id)
+        logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id), process_id=str(process.id))
+    # No hay violación: reconciliar
+    elif episode is not None:
+        if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+            await _resolve_alert(episode, now, rule.id)
+        else:
+            episode.silenced_at = None
+            logger.info(
+                "alert_episode_closed",
+                alert_id=str(episode.id),
+                rule_id=str(rule.id),
+                tenant_id=str(episode.tenant_id),
+                reason="target_recovered_while_silenced",
+            )
     return False
 
 
@@ -345,10 +400,20 @@ async def _evaluate_rule_for_job(
     )
 
     if latest_run is None:
-        # No hay runs en la ventana → no hay violación, resolver si hay alerta abierta
-        active_alert = await _get_active_alert(session, rule.id, job.id)
-        if active_alert is not None:
-            await _resolve_alert(active_alert, now, rule.id)
+        # No hay runs en la ventana → no hay violación, reconciliar si hay alerta de episodio
+        episode = await _get_episode_alert(session, rule.id, job.id)
+        if episode is not None:
+            if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+                await _resolve_alert(episode, now, rule.id)
+            else:
+                episode.silenced_at = None
+                logger.info(
+                    "alert_episode_closed",
+                    alert_id=str(episode.id),
+                    rule_id=str(rule.id),
+                    tenant_id=str(episode.tenant_id),
+                    reason="target_recovered_while_silenced",
+                )
         return False
 
     # Verificar si el run ya fue alertado por el runner (idempotencia)
@@ -358,10 +423,10 @@ async def _evaluate_rule_for_job(
     # Violación: run fallido/timeout Y no alertado por runner
     is_violating = is_failing and not run_alerted_by_runner
 
-    active_alert = await _get_active_alert(session, rule.id, job.id)
+    episode = await _get_episode_alert(session, rule.id, job.id)
 
     if is_violating:
-        if active_alert is None:
+        if episode is None:
             msg = (
                 f"Job '{job.name}' timed out after {job.timeout_s}s"
                 if latest_run.status == "timeout"
@@ -378,16 +443,20 @@ async def _evaluate_rule_for_job(
                 target_entity_id=job.id,
             ))
             return True
-        logger.debug("alert_already_open", alert_id=str(active_alert.id), rule_id=str(rule.id), job_id=str(job.id))
-    elif active_alert is not None:
-        # Resolver si: run es success, O run es fallo ya alertado por runner, O no hay fallo
-        should_resolve = (
-            latest_run.status == "success"
-            or (is_failing and run_alerted_by_runner)
-            or not is_failing
-        )
-        if should_resolve:
-            await _resolve_alert(active_alert, now, rule.id)
+        logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id), job_id=str(job.id))
+    # No hay violación (success, o fallo ya alertado por runner): reconciliar
+    elif episode is not None:
+        if episode.status in (AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED):
+            await _resolve_alert(episode, now, rule.id)
+        else:
+            episode.silenced_at = None
+            logger.info(
+                "alert_episode_closed",
+                alert_id=str(episode.id),
+                rule_id=str(rule.id),
+                tenant_id=str(episode.tenant_id),
+                reason="target_recovered_while_silenced",
+            )
     return False
 
 
@@ -403,6 +472,34 @@ async def evaluate_alerts(session: AsyncSession) -> int:
       - SERVICE: desired_state vs last_status (si last_status != UNKNOWN).
       - PROCESS: expected_count vs last_count (si last_checked_at no es None).
       - JOB: JobRun más reciente en ventana duration_s con status failed/timeout no alertado por runner.
+
+    Deduplicación por episodio:
+    Un "episodio" es una ventana continua de violación para una regla + target.
+    El gate de dedup es `_get_episode_alert()`, que devuelve alertas que BLOQUEAN
+    la creación de una nueva:
+      - OPEN / ACKNOWLEDGED (alerta activa normal), O
+      - RESOLVED con silenced_at NOT NULL (humano resolvió mientras violaba y
+        pidió no ser notificado de nuevo para ESTE episodio).
+
+    Reconciliación (en el worker, no en el endpoint):
+    - Si hay violación y NO hay episodio → crear alerta + deliveries.
+    - Si hay violación y HAY episodio (incluye silenciado) → log alert_already_open,
+      NO crear nueva alerta ni deliveries.
+    - Si NO hay violación y hay episodio OPEN/ACK → auto-resolve normal.
+    - Si NO hay violación y hay episodio RESOLVED+silenced_at → limpiar
+      silenced_at (cerrar episodio sin flippear status, ya estaba RESOLVED).
+
+    Auto-curación: si un operador resuelve (silenced_at) y el target está sano,
+    el worker limpia silenced_at en el siguiente ciclo y el próximo episodio
+    notifica normalmente. NO hace falta endpoint `unsilence`.
+
+    Límite de episodio (documentado, no es bug):
+    Un límite de episodio requiere que el worker haya observado al menos UNA
+    evaluación SIN violación. Si la condición se recupera y vuelve a violarse
+    dentro de la misma ventana de evaluación (`duration_s`), el segundo episodio
+    queda suprimido. Con `duration_s` default 60s, una caída y recuperación más
+    breve que la ventana tampoco se registraría como recuperación. Es la
+    definición de "episodio continuo" contra una evaluación discreta y periódica.
 
     Devuelve el número de alertas NUEVAS creadas en esta ejecución.
     """

@@ -110,6 +110,9 @@ class Alert(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     )
     acknowledged_by: Mapped[UUID | None] = mapped_column(nullable=True)
     value_at_trigger: Mapped[float] = mapped_column(nullable=False)
+    silenced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relaciones
     rule: Mapped["AlertRule"] = relationship("AlertRule", back_populates="alerts", lazy="selectin")

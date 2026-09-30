@@ -16,6 +16,7 @@ interface AlertsTableProps {
   initialParams: {
     status?: AlertStatus;
     severity?: AlertSeverity;
+    silenced?: boolean | null;
     rule_id?: string;
     offset: number;
     limit: number;
@@ -32,6 +33,16 @@ const STATUS_STYLES: Record<AlertStatus, string> = {
   open: 'bg-blue-100 text-blue-800',
   acknowledged: 'bg-amber-100 text-amber-800',
   resolved: 'bg-emerald-100 text-emerald-800',
+};
+
+const SILENCED_STYLES = {
+  true: 'bg-purple-100 text-purple-800',
+  false: 'bg-gray-100 text-gray-800',
+};
+
+const SILENCED_LABELS = {
+  true: 'Silenciada',
+  false: 'Activa',
 };
 
 const SEVERITY_STYLES: Record<AlertSeverity, string> = {
@@ -61,6 +72,7 @@ export function AlertsTable({
   const [filters, setFilters] = useState({
     status: initialParams.status ?? '',
     severity: initialParams.severity ?? '',
+    silenced: initialParams.silenced ?? '',
     rule_id: initialParams.rule_id ?? '',
   });
   const [offset, setOffset] = useState(initialParams.offset);
@@ -75,21 +87,23 @@ export function AlertsTable({
   }, [pathname, searchParams]);
 
   // Fix 6: Keep filters and offset in sync with the URL after mount
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setFilters({
-        status: searchParams.get('status') ?? '',
-        severity: searchParams.get('severity') ?? '',
-        rule_id: searchParams.get('rule_id') ?? '',
-      });
-      setOffset(Number(searchParams.get('offset') ?? 0));
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [searchParams]);
+useEffect(() => {
+      const timer = setTimeout(() => {
+        setFilters({
+          status: searchParams.get('status') ?? '',
+          severity: searchParams.get('severity') ?? '',
+          silenced: searchParams.get('silenced') ?? '',
+          rule_id: searchParams.get('rule_id') ?? '',
+        });
+        setOffset(Number(searchParams.get('offset') ?? 0));
+      }, 0);
+      return () => clearTimeout(timer);
+    }, [searchParams]);
 
   const buildUrl = (params: {
     status?: string;
     severity?: string;
+    silenced?: string;
     rule_id?: string;
     offset: number;
     limit: number;
@@ -99,6 +113,8 @@ export function AlertsTable({
     else newParams.delete('status');
     if (params.severity) newParams.set('severity', params.severity);
     else newParams.delete('severity');
+    if (params.silenced) newParams.set('silenced', params.silenced);
+    else newParams.delete('silenced');
     if (params.rule_id) newParams.set('rule_id', params.rule_id);
     else newParams.delete('rule_id');
     newParams.set('offset', String(params.offset));
@@ -217,6 +233,23 @@ export function AlertsTable({
         </div>
 
         <div className="flex-1 min-w-[200px]">
+          <label htmlFor="filter-silenced" className="block text-sm font-medium text-gray-700 mb-1">
+            Silenciada
+          </label>
+          <select
+            id="filter-silenced"
+            name="silenced"
+            value={filters.silenced}
+            onChange={handleFilterChange}
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-20 min-h-[44px]"
+          >
+            <option value="">Todas</option>
+            <option value="true">Sí</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+
+        <div className="flex-1 min-w-[200px]">
           <label htmlFor="filter-rule-id" className="block text-sm font-medium text-gray-700 mb-1">
             ID de regla
           </label>
@@ -293,6 +326,15 @@ export function AlertsTable({
                     >
                       {STATUS_LABELS[alert.status]}
                     </span>
+                    {alert.silenced && (
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ml-1.5 ${
+                          SILENCED_STYLES[alert.silenced.toString()]
+                        }`}
+                      >
+                        {SILENCED_LABELS[alert.silenced.toString()]}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500">
                     {alert.rule_id.slice(0, 8)}…

@@ -21,11 +21,12 @@ class AlertRepository(TenantScopedRepository):
 
     model = Alert
 
-    async def list_filtered(
+    async def list_filtered(  # noqa: PLR0913
         self,
         *,
         status: AlertStatus | None = None,
         severity: AlertSeverity | None = None,
+        silenced: bool | None = None,
         rule_id: UUID | None = None,
         offset: int = 0,
         limit: int = 100,
@@ -36,6 +37,11 @@ class AlertRepository(TenantScopedRepository):
             stmt = stmt.where(Alert.status == status)
         if severity is not None:
             stmt = stmt.where(Alert.severity == severity)
+        if silenced is not None:
+            if silenced:
+                stmt = stmt.where(Alert.silenced_at.is_not(None))
+            else:
+                stmt = stmt.where(Alert.silenced_at.is_(None))
         if rule_id is not None:
             stmt = stmt.where(Alert.rule_id == rule_id)
         stmt = stmt.offset(offset).limit(limit)
@@ -73,12 +79,19 @@ class AlertRepository(TenantScopedRepository):
         return alert  # type: ignore[no-any-return]
 
     async def resolve(self, alert_id: UUID) -> Alert | None:
-        """Marca una alerta como resolved."""
+        """Marca una alerta como resolved (acción humana).
+
+        Setea silenced_at = now() para indicar que un operador resolvió
+        la alerta mientras la violación seguía viva y pidió no volver a ser
+        notificado de ESTE episodio. El worker reconcilia silenced_at
+        cuando el target se recupera (limpia el campo, no flippea status).
+        """
         alert = await self.get(alert_id)
         if not alert:
             return None
         alert.status = AlertStatus.RESOLVED
         alert.resolved_at = datetime.now(UTC)
+        alert.silenced_at = datetime.now(UTC)
         await self.session.flush()
         await self.session.refresh(alert)
         return alert  # type: ignore[no-any-return]

@@ -161,6 +161,7 @@ async def acknowledge_alert(
         acknowledged_at=alert.acknowledged_at,
         resolved_at=alert.resolved_at,
         acknowledged_by=alert.acknowledged_by,
+        silenced_at=alert.silenced_at,
     )
 
 
@@ -189,4 +190,5 @@ async def resolve_alert(
         acknowledged_at=alert.acknowledged_at,
         resolved_at=alert.resolved_at,
         acknowledged_by=alert.acknowledged_by,
+        silenced_at=alert.silenced_at,
     )

@@ -9,6 +9,7 @@ from pydantic import (
     EmailStr,
     Field,
     HttpUrl,
+    computed_field,
     field_validator,
     model_validator,
 )
@@ -220,8 +221,20 @@ class AlertResponse(BaseModel):
     acknowledged_at: datetime | None
     acknowledged_by: UUID | None
     value_at_trigger: float
+    silenced_at: datetime | None = Field(default=None, exclude=True)
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def silenced(self) -> bool:
+        """Si un humano silenció esta alerta (la resolvió mientras violaba).
+
+        Derivado de `silenced_at` para que el cliente no tenga que
+        interpretar null. `silenced_at` queda excluido de la serialización:
+        es estado interno del episodio, no parte del contrato público.
+        """
+        return self.silenced_at is not None
 
     model_config = {"from_attributes": True}
 
@@ -245,6 +258,13 @@ class AlertAckResponse(BaseModel):
     acknowledged_at: datetime | None
     resolved_at: datetime | None
     acknowledged_by: UUID | None
+    silenced_at: datetime | None = Field(default=None, exclude=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def silenced(self) -> bool:
+        """Derivado de `silenced_at`; ver `AlertResponse.silenced`."""
+        return self.silenced_at is not None
 
 
 # ──────────────────────────────────────────────
@@ -255,6 +275,7 @@ class AlertListParams(BaseModel):
 
     status: AlertStatus | None = None
     severity: AlertSeverity | None = None
+    silenced: bool | None = None
     rule_id: UUID | None = None
     limit: int = Field(default=100, ge=1, le=500)
     offset: int = Field(default=0, ge=0)

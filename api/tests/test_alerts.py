@@ -22,7 +22,7 @@ from app.models.alert import (
 from app.models.metric import Metric, MetricType
 from app.models.server import Server, ServerStatus
 from app.models.tenant import Tenant
-from app.workers.alerts import evaluate_alerts
+from app.workers.alerts import _get_episode_alert, evaluate_alerts
 from app.workers.delivery_helpers import create_pending_deliveries
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -147,6 +147,27 @@ async def _add_metrics(session: AsyncSession, seed: _MetricSeed) -> list[datetim
         timestamps.append(ts)
     await session.flush()
     return timestamps
+
+
+async def _delete_metrics(session: AsyncSession, timestamps: list[datetime]) -> None:
+    """Borra las métricas con los timestamps indicados.
+
+    Simula que esos samples salieron de la ventana de evaluación, que es lo que
+    ocurre en producción conforme avanza el reloj. Necesario porque el motor lee
+    una ventana semiabierta (`ts >= now - duration_s`) sin cota superior: los
+    samples sembrados en "now" permanecen dentro de la ventana durante toda la
+    vida del test.
+    """
+    for ts in timestamps:
+        metric = await session.scalar(
+            select(Metric).where(
+                Metric.server_id.is_not(None),
+                Metric.ts == ts,
+            )
+        )
+        if metric is not None:
+            await session.delete(metric)
+    await session.flush()
 
 
 # ──────────────────────────────────────────────
@@ -531,6 +552,294 @@ class TestAlertEngine:
         assert len(alerts) == 2
         severities = {a.severity for a in alerts}
         assert severities == {AlertSeverity.WARNING, AlertSeverity.CRITICAL}
+
+
+    # ──────────────────────────────────────────────
+    # Silencing / Episode dedup tests (T4)
+    # ──────────────────────────────────────────────
+
+    async def test_human_resolve_while_violating_silences_episode(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Regression test: alert OPEN, violation still active, human resolves →
+        next worker cycle creates 0 new alerts AND 0 new deliveries.
+
+        This is the core fix: silenced_at blocks new alert creation for the
+        same episode. Deliveries are only created at alert creation time.
+        """
+        tenant, server = await _seed_tenant_server(db_session)
+
+        now = datetime.now(UTC)
+        window_start = now - timedelta(seconds=60)
+        await _add_metrics(
+            db_session,
+            _MetricSeed(server, tenant, MetricType.CPU_USAGE, [85.0, 87.0, 82.0, 88.0, 90.0], base_ts=window_start),
+        )
+
+        rule = AlertRule(
+            tenant_id=tenant.id,
+            entity_type=EntityType.SERVER,
+            entity_id=server.id,
+            metric="cpu_usage",
+            operator=AlertOperator.GT,
+            threshold=80.0,
+            duration_s=60,
+            severity=AlertSeverity.WARNING,
+            channels={"email": {}},
+            is_active=True,
+        )
+        db_session.add(rule)
+        await db_session.flush()
+
+        # Fase 1: worker crea alerta
+        created1 = await evaluate_alerts(db_session)
+        assert created1 == 1
+
+        alert = await db_session.scalar(
+            select(Alert).where(Alert.rule_id == rule.id)
+        )
+        assert alert is not None
+        assert alert.status == AlertStatus.OPEN
+        assert alert.silenced_at is None
+        original_alert_id = alert.id
+
+        deliveries_before = (
+            await db_session.scalars(
+                select(AlertDelivery).where(AlertDelivery.alert_id == alert.id)
+            )
+        ).all()
+        assert len(deliveries_before) == 1
+
+        # Fase 2: humano resuelve vía repo.resolve() (simula POST /resolve)
+        # Esto pone status=RESOLVED + silenced_at=now()
+        alert.status = AlertStatus.RESOLVED
+        alert.resolved_at = datetime.now(UTC)
+        alert.silenced_at = datetime.now(UTC)
+        await db_session.flush()
+
+        # Fase 3: worker vuelve a evaluar (violación SIGUE ACTIVA)
+        # Debe encontrar el episodio RESOLVED+silenced_at y NO crear nueva alerta
+        created2 = await evaluate_alerts(db_session)
+        assert created2 == 0  # ¡No crea nueva alerta!
+
+        # Verificar que sigue siendo la misma alerta
+        alert2 = await db_session.scalar(
+            select(Alert).where(Alert.rule_id == rule.id)
+        )
+        assert alert2 is not None
+        assert alert2.id == original_alert_id
+        assert alert2.status == AlertStatus.RESOLVED
+        assert alert2.silenced_at is not None  # silenced_at se mantiene
+
+        # CRÍTICO: No se crearon NUEVOS deliveries
+        all_deliveries = (
+            await db_session.scalars(
+                select(AlertDelivery).where(AlertDelivery.alert_id == original_alert_id)
+            )
+        ).all()
+        assert len(all_deliveries) == 1  # Solo el delivery original
+
+    async def test_get_episode_alert_returns_silenced_alert(
+        self, db_session: AsyncSession
+    ) -> None:
+        """_get_episode_alert() devuelve alerta RESOLVED+silenced_at (nuevo caso dedup)."""
+        tenant, server = await _seed_tenant_server(db_session)
+
+        # Crear alerta RESOLVED con silenced_at
+        rule = AlertRule(
+            tenant_id=tenant.id,
+            entity_type=EntityType.SERVER,
+            entity_id=server.id,
+            metric="cpu_usage",
+            operator=AlertOperator.GT,
+            threshold=80.0,
+            duration_s=60,
+            severity=AlertSeverity.WARNING,
+            channels={"email": {}},
+            is_active=True,
+        )
+        db_session.add(rule)
+        await db_session.flush()
+
+        alert = Alert(
+            rule_id=rule.id,
+            server_id=server.id,
+            target_entity_id=server.id,
+            tenant_id=tenant.id,
+            severity=AlertSeverity.WARNING,
+            status=AlertStatus.RESOLVED,
+            message="Test",
+            triggered_at=datetime.now(UTC),
+            value_at_trigger=90.0,
+            resolved_at=datetime.now(UTC),
+            silenced_at=datetime.now(UTC),
+        )
+        db_session.add(alert)
+        await db_session.flush()
+
+        # _get_episode_alert debe encontrar esta alerta (gate de dedup)
+        episode = await _get_episode_alert(db_session, rule.id, server.id, server_id=server.id)
+        assert episode is not None
+        assert episode.id == alert.id
+        assert episode.status == AlertStatus.RESOLVED
+        assert episode.silenced_at is not None
+
+    async def test_self_healing_silenced_alert_when_target_recovers(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Self-healing: RESOLVED+silenced_at alert, target becomes healthy →
+        worker clears silenced_at (does NOT flip status, already RESOLVED)."""
+        tenant, server = await _seed_tenant_server(db_session)
+
+        rule = AlertRule(
+            tenant_id=tenant.id,
+            entity_type=EntityType.SERVER,
+            entity_id=server.id,
+            metric="cpu_usage",
+            operator=AlertOperator.GT,
+            threshold=80.0,
+            duration_s=60,
+            severity=AlertSeverity.WARNING,
+            channels={"email": {}},
+            is_active=True,
+        )
+        db_session.add(rule)
+        await db_session.flush()
+
+        # Crear alerta RESOLVED+silenced_at (simula humano resolvió mientras violaba)
+        alert = Alert(
+            rule_id=rule.id,
+            server_id=server.id,
+            target_entity_id=server.id,
+            tenant_id=tenant.id,
+            severity=AlertSeverity.WARNING,
+            status=AlertStatus.RESOLVED,
+            message="Test",
+            triggered_at=datetime.now(UTC),
+            value_at_trigger=90.0,
+            resolved_at=datetime.now(UTC),
+            silenced_at=datetime.now(UTC),
+        )
+        db_session.add(alert)
+        await db_session.flush()
+
+        # Fase: métricas vuelven a rango (target sano)
+        now = datetime.now(UTC) + timedelta(seconds=70)
+        window_start = now - timedelta(seconds=60)
+        await _add_metrics(
+            db_session,
+            _MetricSeed(server, tenant, MetricType.CPU_USAGE, [45.0, 50.0, 40.0, 55.0, 48.0], base_ts=window_start),
+        )
+
+        # Worker evalúa: no hay violación, ve episodio RESOLVED+silenced_at
+        # Debe limpiar silenced_at para cerrar el episodio
+        created = await evaluate_alerts(db_session)
+        assert created == 0
+
+        await db_session.refresh(alert)
+        assert alert.status == AlertStatus.RESOLVED  # status NO cambia
+        assert alert.silenced_at is None  # ¡silenced_at limpiado!
+        assert alert.resolved_at is not None  # resolved_at se mantiene
+
+    async def test_re_violation_after_normal_resolve_creates_new_alert(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Re-violation after a NORMAL auto-resolve → a NEW alert IS created.
+
+        Regression guard for over-suppression: silencing must not suppress a
+        legitimate second episode. This is the test that proves silencing is not
+        over-broad — if the episode gate were wrong, the third phase would
+        silently create 0 alerts and a real second incident would go dark.
+
+        Note on the metric window: `evaluate_alerts` reads a half-open window
+        (`Metric.ts >= now - duration_s`) with no upper bound, and `now` comes
+        from the real clock, so samples seeded at "now" stay inside the window
+        for the lifetime of the test. Older samples only leave the window by
+        rolling out of it in real time. Deleting the previous phase's samples
+        is therefore the faithful simulation of that rollover.
+        """
+        tenant, server = await _seed_tenant_server(db_session)
+
+        violating_ts = await _add_metrics(
+            db_session,
+            _MetricSeed(
+                server,
+                tenant,
+                MetricType.CPU_USAGE,
+                [85.0, 87.0, 82.0, 88.0, 90.0],
+                base_ts=datetime.now(UTC) - timedelta(seconds=60),
+            ),
+        )
+
+        rule = AlertRule(
+            tenant_id=tenant.id,
+            entity_type=EntityType.SERVER,
+            entity_id=server.id,
+            metric="cpu_usage",
+            operator=AlertOperator.GT,
+            threshold=80.0,
+            duration_s=60,
+            severity=AlertSeverity.WARNING,
+            channels={"email": {}},
+            is_active=True,
+        )
+        db_session.add(rule)
+        await db_session.flush()
+
+        # Phase 1: sustained breach → alert OPEN
+        assert await evaluate_alerts(db_session) == 1
+
+        first_alert = await db_session.scalar(select(Alert).where(Alert.rule_id == rule.id))
+        assert first_alert is not None
+        first_alert_id = first_alert.id
+
+        # Phase 2: old breaching samples roll out of the window and healthy
+        # samples take their place → normal auto-resolve, silenced_at stays NULL.
+        await _delete_metrics(db_session, violating_ts)
+        await _add_metrics(
+            db_session,
+            _MetricSeed(
+                server,
+                tenant,
+                MetricType.CPU_USAGE,
+                [45.0, 50.0, 40.0, 55.0, 48.0],
+                base_ts=datetime.now(UTC) - timedelta(seconds=60),
+            ),
+        )
+
+        assert await evaluate_alerts(db_session) == 0
+        await db_session.refresh(first_alert)
+        assert first_alert.status == AlertStatus.RESOLVED
+        assert first_alert.silenced_at is None, "auto-resolve must NOT silence"
+
+        # Phase 3: healthy samples roll out, breach returns → a NEW alert fires.
+        healthy_ts = (
+            await db_session.scalars(
+                select(Metric.ts).where(Metric.server_id == server.id, Metric.type == MetricType.CPU_USAGE)
+            )
+        ).all()
+        await _delete_metrics(db_session, list(healthy_ts))
+        await _add_metrics(
+            db_session,
+            _MetricSeed(
+                server,
+                tenant,
+                MetricType.CPU_USAGE,
+                [95.0, 97.0, 99.0],
+                base_ts=datetime.now(UTC) - timedelta(seconds=30),
+            ),
+        )
+
+        assert await evaluate_alerts(db_session) == 1, "a second episode MUST notify"
+
+        all_alerts = (
+            await db_session.scalars(select(Alert).where(Alert.rule_id == rule.id).order_by(Alert.created_at))
+        ).all()
+        assert len(all_alerts) == 2, "exactly one alert per episode"
+        new_alert = all_alerts[-1]
+        assert new_alert.id != first_alert_id
+        assert new_alert.status == AlertStatus.OPEN
+        assert new_alert.silenced_at is None
 
 
 # ──────────────────────────────────────────────
@@ -1043,6 +1352,56 @@ class TestAlertsAPI:
         )
         assert resolve_resp.status_code == 404
         assert resolve_resp.json()["detail"] == "Alerta no encontrada"
+
+    @pytest.mark.asyncio
+    async def test_silenced_flag_serialized_and_silenced_at_hidden(
+        self, async_client: AsyncClient
+    ) -> None:
+        """El contrato de serialización de `silenced` ata el schema derivado.
+
+        `silenced` es un campo derivado de `silenced_at`: debe viajar en la
+        respuesta para que el cliente no interprete null, y `silenced_at` debe
+        quedar excluido porque es estado interno del episodio, no del contrato
+        público. Antes de este test el schema derivaba `silenced` con un
+        `model_validator` que copiaba `__dict__` del objeto ORM — un cambio de
+        `silenced` a `silenced_at` en el modelo se serializaba sin que nada lo
+        detectara.
+        """
+        client = async_client
+        token = await _register_and_login(client, "alert_silenced_schema@example.com")
+        api_key = await _create_api_key(client, token, "Agent Silenced")
+
+        _rule_id, alert_id = await self._setup_alert_via_engine(client, token, api_key)
+
+        # Antes de resolver: OPEN, no silenciada
+        open_resp = await client.get(
+            "/api/v1/alerts?limit=50",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert open_resp.status_code == 200
+        open_alert = next(a for a in open_resp.json() if a["id"] == alert_id)
+        assert open_alert["silenced"] is False
+        assert "silenced_at" not in open_alert
+
+        # Resolver → el endpoint silencia el episodio (repo.resolve)
+        resolve_resp = await client.post(
+            f"/api/v1/alerts/{alert_id}/resolve",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resolve_resp.status_code == 200
+        resolve_data = resolve_resp.json()
+        assert resolve_data["silenced"] is True, "resolve debe reportar silenced=True"
+        assert "silenced_at" not in resolve_data, "silenced_at es estado interno"
+
+        # Y el listado lo refleja
+        list_resp = await client.get(
+            "/api/v1/alerts?limit=50",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert list_resp.status_code == 200
+        listed = next(a for a in list_resp.json() if a["id"] == alert_id)
+        assert listed["silenced"] is True
+        assert "silenced_at" not in listed
 
     @pytest.mark.asyncio
     async def test_tenant_isolation_alerts(self, async_client: AsyncClient) -> None:

@@ -139,6 +139,14 @@ Corregido el advisory 2 (el único con riesgo real) antes de entregar. Un test H
 
 Suite tras el fix: **249 passed, 2 failed (SMTP ambiental), 1 skipped (RLS)** — +1 sobre las 248 previas, que es el test nuevo.
 
+## Segunda review nativa — `review-2b198c2f518c9509`
+
+Candidato que **incluye** el fix `b7ebcdf`. **Aprobada**, 0 bloqueantes, lente única `review-reliability`, autoridad quemada. 3 advisories:
+
+1. `R3-episode-boundary-limitation` (WARNING) — el límite de episodio ya documentado; clasificado `causal_disposition: pre-existing`, es decir la review confirma que **no lo introdujo este candidato**.
+2. `R3-missing-index-on-silenced-at` (SUGGESTION, **nuevo**) — la migración agrega `silenced_at` sin índice, y `_get_episode_alert` filtra por `silenced_at IS NOT NULL` + `status` + `rule_id` + `target_entity_id`. Sobre tablas grandes ese filtro compuesto puede necesitar un índice compuesto. **Abierto** — no es urgente mientras el volumen de alertas sea bajo, pero es deuda real de performance que crece sola con el uso.
+3. `R3-test-helper-delete-metrics-imprecise` (SUGGESTION) — el advisory 4 de la primera review, sigue abierto.
+
 ## Pendiente para slices futuros (fuera de alcance de este slice)
 
 - Endpoint `unsilence` / re-notificación periódica (cooldown).
@@ -146,3 +154,4 @@ Suite tras el fix: **249 passed, 2 failed (SMTP ambiental), 1 skipped (RLS)** �
 - Exponer `telegram` en el formulario web de reglas (`web/src/lib/api/rules.ts` `AlertRuleChannels` no lo declara aunque el backend sí lo acepta en `ALLOWED_CHANNEL_KEYS`).
 - Arreglar `_compute_silenced` con campo derivado (advisory 2) — **hecho en `b7ebcdf`**.
 - `_delete_metrics` más defensivo (advisory 4): agregar `tenant_id` y tipo a los filtros.
+- Índice compuesto para el gate de episodio (advisory de la 2ª review): `_get_episode_alert` combina `rule_id` + `target_entity_id`/`server_id` + `status` + `silenced_at IS NOT NULL`. Hoy funciona sin índice; con volumen real de alertas conviene un índice compuesto.

@@ -85,13 +85,14 @@ Ambos se envían como string, que es lo que espera el backend.
 |-------|-----------|
 | `npm run lint` (`eslint .`) | limpio |
 | `npm run build` (`next build` — corre el typecheck) | **PASS** tras corregir `AlertsTable.tsx` (ver abajo) |
+| `docker compose build --parallel` | **no ejecutado** — Docker Desktop no está corriendo en esta máquina (`dockerDesktopLinuxEngine` no encontrado). El build nativo corre el mismo `pnpm run build` que el stage `builder` del Dockerfile, pero la equivalencia no está verificada aquí. |
 | `pytest` (suite completa) | **255 passed, 2 failed (SMTP ambiental), 1 skipped, 1 xfailed, 2 xpassed** — +6 sobre las 249 previas |
 | `ruff check app tests` | limpio |
 | `mypy app` | limpio, 62 archivos |
 
 ### Regresión encontrada y corregida: `main` tenía el typecheck roto
 
-El primer `npm run build` de este slice falló con 3 errores de TypeScript en `AlertsTable.tsx` — **un archivo del PR #29, no de este slice**. Los gates que corrí en el PR #29 (ruff, mypy, pytest) dieron verde porque el defecto es de TypeScript y ninguno lo toca.
+El primer `npm run build` de este slice falló con 3 errores de TypeScript en `AlertsTable.tsx` — **un archivo del PR #29, no de este slice**.
 
 Tres errores, todos del mismo origen:
 - `SILENCED_STYLES`/`SILENCED_LABELS` indexados con `alert.silenced.toString()`, algo que TS no puede verificar contra unas claves `true`/`false` sin tipar.
@@ -99,7 +100,9 @@ Tres errores, todos del mismo origen:
 
 Corregido en `26863a4`. De paso, la variante `'Activa'` del badge era **código muerto**: el badge solo se renderiza cuando `silenced` es `true`. Quedó colapsado a un único estilo y label.
 
-**Causa raíz del escape, y es más importante que el bug**: `.github/workflows/ci.yml` tiene jobs de Python, Go y Docker — **ninguno de web**. No hay `npm run build` ni `npm run lint` en el pipeline. Por eso un typecheck roto mergeó sin que nada lo notara. Agregar el job de web al CI es trabajo aparte y queda anotado abajo.
+**Corrección a una afirmación previa mía, que era FALSA.** Escribí que el CI no tenía job de web y que nada typechequeaba el dashboard. Es incorrecto: el job `docker-build` corre `docker compose build --parallel`, que construye `web/Dockerfile`, y su stage `builder` ejecuta `pnpm run build` (web/Dockerfile:31) — el mismo typecheck. El PR #29 no podía mergear roto, el CI lo habría bloqueado.
+
+La causa real de que llegara a `main` no es una puerta faltante en el pipeline. Es que **en el PR #29 solo corrí la mitad de los gates** — ruff, mypy y pytest, todos Python — y reporté "verificado" sin ejecutar los que cubrían TypeScript. Los checks que corrí pasaron de verdad; la conclusión que saqué de ellos no estaba garantizada. Mi error fue saltar de "los checks que corrí pasaron" a "el cambio está bien".
 
 ### Segundo defecto tapado: un autofix de eslint que no arreglaba nada
 
@@ -124,7 +127,8 @@ El writer reportó `npm run build` como **PASS** y en la misma línea mencionó 
 
 ## Pendiente que este slice destapó (fuera de alcance)
 
-- **Agregar job de web al CI** (`npm run lint` + `npm run build`). Sin esto, cualquier error de TypeScript futuro vuelve a mergear solo. Es la deuda más urgente que salió de esta sesión.
+- **Job de web dedicado en el CI** (`npm run lint` explícito, sin depender del build de Docker). El typecheck ya está cubierto por `docker-build` → `web/Dockerfile:31`, así que **no es una brecha de seguridad, es una de señal**: hoy el único aviso de un error de TypeScript llega dentro de un job de Docker, que es donde nadie va a mirar cuando algo "de la web" falla. Merece un job con nombre propio para que el fallo sea legible.
+- Verificar el slice con `docker compose build --parallel` además de `npm run build` local, para no divergir de lo que el CI realmente ejecuta.
 
 ## Notas de ejecución
 

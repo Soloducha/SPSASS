@@ -78,6 +78,9 @@ Ambos se envían como string, que es lo que espera el backend.
 - [x] T6 — tests de regresión backend (telegram en create/update de reglas **y en jobs**) — `b1bc662` + `2bf66a9`
 - [x] T7 — verificación (build, lint, pytest, ruff, mypy) — ver tabla
 - [x] T8 — fix del typecheck roto de `main` heredado del PR #29 — `26863a4`
+- [x] T9 — job de web en el CI (lint + typecheck) — `fd984a5`
+- [x] T10 — `web/public` para que el target `runner` construya — `9849b31`
+- [x] T11 — ignorar la copia del favicon que genera el build standalone — commit de `.gitignore`
 
 ## Verificación
 
@@ -161,11 +164,36 @@ Quitando `"telegram"` de `ALLOWED_CHANNEL_KEYS`, fallan los 7 tests nuevos — c
 
 El writer reportó `npm run build` como **PASS** y en la misma línea mencionó "3 pre-existing TS errors". Eso no es un PASS: el build había fallado. Los errores no eran preexistentes en el sentido de "ajenos a este trabajo" — eran de un PR ya mergeado. Ninguno de los dos hubs de verificación del web se había corrido nunca en este repo, por eso el defecto del PR #29 llegó a `main`.
 
-## Pendiente que este slice destapó (fuera de alcance, requiere decisión del usuario)
+## Hallazgos resueltos (T9, T10)
 
-1. **El CI no typechequea el web.** Es el hallazgo más importante de esta sesión. El job `docker-build` corre `docker compose build --parallel`, y compose construye el web con `target: dev`, que no compila. Cualquier error de TypeScript futuro vuelve a mergear solo, exactamente como pasó en el PR #29. Opciones: (a) cambiar el target de compose a `builder`, (b) agregar un job `web` con `pnpm run lint` + `pnpm run build`, (c) ambas.
-2. **El target `runner` no construye** — `COPY /app/public` falla porque `web/public` no existe. La imagen de producción web **no se puede construir hoy** con este repo. Decisión pendiente: crear el directorio (con un `.gitkeep` o un favicon) o hacer el `COPY` condicional en el Dockerfile.
-3. **`docker compose build --parallel` es la verificación que el CI realmente ejecuta**, así que conviene correrla local además del `npm run build` nativo. Ojo: no cubre el typecheck por lo del punto 1.
+Ambos nacieron de verificar con Docker en vez de razonar, y los dos eran reales.
+
+### T9 — El CI no typechequea el web (`fd984a5`)
+
+Nuevo job `web` en `.github/workflows/ci.yml`: `pnpm run lint` + `pnpm run build` (que es lo que corre tsc). Node 24 y pnpm 12.8.1 pineados para coincidir con `web/Dockerfile`, cuya imagen base es `node:24-alpine` y activa pnpm por corepack.
+
+**Verificado:** el job detecta el bug. Rompí `SILENCED_BADGE_STYLE` a propósito con una anotación de tipo inválida y `pnpm run build` falló con `error TS2322` — el mismo mecanismo de error que dejó pasar el PR #29.
+
+### T10 — El target `runner` no construía (`9849b31`)
+
+`web/Dockerfile` documenta el target `runner` como el build de producción (línea 4), y fallaba en `COPY --from=builder /app/public ./public` porque `web/public` no existía. **La imagen de producción web no se podía construir desde este repositorio.**
+
+Agregado `web/public/README.md` (Next.js espera el directorio; ahí van favicon, robots.txt y assets de raíz).
+
+**Verificado:** `docker build --target runner -t spsaas-web-runner-test ./web` completa todas las capas, y la imagen contiene `server.js`, `.next/`, `node_modules/` y `public/` bajo el usuario no-root `nextjs`.
+
+### T11 — El favicon que appeared solo (`c767...` en `.gitignore`)
+
+Tras el build apareció un `web/public/favicon.ico` de 32KB sin trackear. **Origen verificado:** el build standalone copia `web/src/app/favicon.ico` — que sí existe y sí está trackeado — hacia `public/`. Es output de build, no un asset del proyecto. Agregado a `web/.gitignore` con un comentario que explica de dónde viene, para que el próximo build no ensucie el árbol ni duplique el favicon real.
+
+## Pendiente que este slice destapó
+
+Nada abierto de los tres hallazgos: los tres están corregidos y verificados con ejecución real, no con razonamiento.
+
+Lo que sigue siendo decisión tuya, y **no** lo toqué porque son cambios de producto:
+
+- Si `docker compose build` debe dejar de usar `target: dev`. Es lo correcto para un pipeline de despliegue, pero el target `dev` existe a propósito para hot-reload con los volume mounts (`./web:/app`). Cambiarlo rompe el flujo de desarrollo local. Lo correcto es dejarlos separados: compose para desarrollo, un target de producción aparte para despliegue. Hoy ese target existe (`runner`) pero no había forma de ejercitarlo desde compose.
+- El job `web` del CI **no** corre tests: no hay framework de tests en `web/`. Solo lint + typecheck. Agregar Vitest es un slice propio.
 
 ## Notas de ejecución
 

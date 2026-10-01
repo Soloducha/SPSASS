@@ -85,7 +85,8 @@ Ambos se envían como string, que es lo que espera el backend.
 |-------|-----------|
 | `npm run lint` (`eslint .`) | limpio |
 | `npm run build` (`next build` — corre el typecheck) | **PASS** tras corregir `AlertsTable.tsx` (ver abajo) |
-| `docker compose build --parallel` | **no ejecutado** — Docker Desktop no está corriendo en esta máquina (`dockerDesktopLinuxEngine` no encontrado). El build nativo corre el mismo `pnpm run build` que el stage `builder` del Dockerfile, pero la equivalencia no está verificada aquí. |
+| `docker compose build --parallel` | **PASS** — las 3 imágenes construidas (`spsaas-api`, `spsaas-worker`, `spsaas-web`). Ojo: para el web usa `target: dev`, que **no** compila ni typechequea. |
+| `docker build --target runner --no-cache ./web` | typecheck **PASS** con el fix. Con el código previo al fix **falla** con los 3 errores TS (evidencia de que el typecheck solo corre en `runner`). Falla después en `COPY /app/public`, por defecto preexistente del Dockerfile. |
 | `pytest` (suite completa) | **255 passed, 2 failed (SMTP ambiental), 1 skipped, 1 xfailed, 2 xpassed** — +6 sobre las 249 previas |
 | `ruff check app tests` | limpio |
 | `mypy app` | limpio, 62 archivos |
@@ -100,9 +101,44 @@ Tres errores, todos del mismo origen:
 
 Corregido en `26863a4`. De paso, la variante `'Activa'` del badge era **código muerto**: el badge solo se renderiza cuando `silenced` es `true`. Quedó colapsado a un único estilo y label.
 
-**Corrección a una afirmación previa mía, que era FALSA.** Escribí que el CI no tenía job de web y que nada typechequeaba el dashboard. Es incorrecto: el job `docker-build` corre `docker compose build --parallel`, que construye `web/Dockerfile`, y su stage `builder` ejecuta `pnpm run build` (web/Dockerfile:31) — el mismo typecheck. El PR #29 no podía mergear roto, el CI lo habría bloqueado.
+**Corrección a una afirmación previa mía, que era FALSA — dos veces撤回, y la segunda importa más.**
 
-La causa real de que llegara a `main` no es una puerta faltante en el pipeline. Es que **en el PR #29 solo corrí la mitad de los gates** — ruff, mypy y pytest, todos Python — y reporté "verificado" sin ejecutar los que cubrían TypeScript. Los checks que corrí pasaron de verdad; la conclusión que saqué de ellos no estaba garantizada. Mi error fue saltar de "los checks que corrí pasaron" a "el cambio está bien".
+Escribí primero que "el CI no tiene job de web". Luego lo corregí a "el CI sí cubre el web vía `web/Dockerfile` stage builder". **Ambas afirmaciones eran incorrectas.** Verificado empíricamente levantando Docker Desktop y ejecutando los builds:
+
+`docker-compose.yml:133` construye el web con **`target: dev`**. El stage `dev` del Dockerfile **no compila** — solo hace `pnpm install --frozen-lockfile`, copia el código y corre `pnpm dev`. El stage que sí corre `pnpm run build` (y por lo tanto el typecheck) es **`builder`**, que alimenta al target **`runner`**, y compose **no lo usa**.
+
+Prueba directa: `docker compose build web --no-cache` con el código roto del PR #29 **construye la imagen sin error**, porque nunca ejecuta el typecheck.
+
+Prueba del target correcto: `docker build --target runner --no-cache ./web` con ese mismo código roto **falla**:
+
+```
+#14 [builder 4/4] RUN pnpm run build
+AlertsTable.tsx(242,13): error TS2322: Type 'string | boolean' is not assignable ...
+AlertsTable.tsx(332,27): error TS7053: ...
+AlertsTable.tsx(335,26): error TS7053: ...
+Failed to type check.
+ERROR: process "/bin/sh -c pnpm run build" did not complete successfully: exit code: 1
+```
+
+Con el fix aplicado (`26863a4`), ese mismo build pasa el step `#14 [builder 4/4] RUN pnpm run build`.
+
+**Conclusión, con la evidencia que la sostiene:** el CI **no** typechequea el dashboard. El job `docker-build` corre `docker compose build --parallel`, que para el web usa `target: dev` y no compila. Mi afirmación original era correcta por el motivo equivocado —la conclusionMessages_right_por_accidente—and I "verified" it with a partial grep instead of reading what compose actually builds.
+
+La causa real de que el PR #29 llegara a `main` son **dos** hechos, no uno:
+1. Solo corrí la mitad de los gates (ruff, mypy, pytest — todos Python) y reporté "verificado".
+2. El pipeline nunca habría typechequeado el web aunque lo hubiera corrido.
+
+### Defecto preexistente adicional: el target `runner` no construye
+
+Con el typecheck ya pasando, `docker build --target runner` falla después, en el stage `runner`:
+
+```
+ERROR: failed to calculate checksum of ref ...: "/app/public": not found
+```
+
+`web/Dockerfile:46` hace `COPY --from=builder /app/public ./public`, pero **`web/public` no existe en el repositorio**. El target `runner` —el que produce la imagen de producción según el comentario del propio Dockerfile (línea 4: `docker build --target runner -t spsaas-web ./web`)— **está roto desde antes de este trabajo**. Nadie lo notó porque compose construye `dev`.
+
+Esto no lo arreglo acá: es un slice propio, con decisión de producto (crear el directorio, o hacer el `COPY` condicional).
 
 ### Segundo defecto tapado: un autofix de eslint que no arreglaba nada
 
@@ -125,10 +161,11 @@ Quitando `"telegram"` de `ALLOWED_CHANNEL_KEYS`, fallan los 7 tests nuevos — c
 
 El writer reportó `npm run build` como **PASS** y en la misma línea mencionó "3 pre-existing TS errors". Eso no es un PASS: el build había fallado. Los errores no eran preexistentes en el sentido de "ajenos a este trabajo" — eran de un PR ya mergeado. Ninguno de los dos hubs de verificación del web se había corrido nunca en este repo, por eso el defecto del PR #29 llegó a `main`.
 
-## Pendiente que este slice destapó (fuera de alcance)
+## Pendiente que este slice destapó (fuera de alcance, requiere decisión del usuario)
 
-- **Job de web dedicado en el CI** (`npm run lint` explícito, sin depender del build de Docker). El typecheck ya está cubierto por `docker-build` → `web/Dockerfile:31`, así que **no es una brecha de seguridad, es una de señal**: hoy el único aviso de un error de TypeScript llega dentro de un job de Docker, que es donde nadie va a mirar cuando algo "de la web" falla. Merece un job con nombre propio para que el fallo sea legible.
-- Verificar el slice con `docker compose build --parallel` además de `npm run build` local, para no divergir de lo que el CI realmente ejecuta.
+1. **El CI no typechequea el web.** Es el hallazgo más importante de esta sesión. El job `docker-build` corre `docker compose build --parallel`, y compose construye el web con `target: dev`, que no compila. Cualquier error de TypeScript futuro vuelve a mergear solo, exactamente como pasó en el PR #29. Opciones: (a) cambiar el target de compose a `builder`, (b) agregar un job `web` con `pnpm run lint` + `pnpm run build`, (c) ambas.
+2. **El target `runner` no construye** — `COPY /app/public` falla porque `web/public` no existe. La imagen de producción web **no se puede construir hoy** con este repo. Decisión pendiente: crear el directorio (con un `.gitkeep` o un favicon) o hacer el `COPY` condicional en el Dockerfile.
+3. **`docker compose build --parallel` es la verificación que el CI realmente ejecuta**, así que conviene correrla local además del `npm run build` nativo. Ojo: no cubre el typecheck por lo del punto 1.
 
 ## Notas de ejecución
 

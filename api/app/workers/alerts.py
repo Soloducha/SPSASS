@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
+from app.models.agent_command import AgentCommand, AgentCommandStatus
 from app.models.alert import Alert, AlertOperator, AlertRule, AlertStatus, EntityType
 from app.models.job import Job, JobRun
 from app.models.metric import Metric, MetricType
@@ -170,6 +171,63 @@ async def _create_alert_and_deliveries(params: _AlertCreateParams) -> Alert:
     return alert
 
 
+@dataclass(frozen=True, slots=True)
+class _AutoRestartParams:
+    """Parámetros para encolar auto-restart."""
+    session: AsyncSession
+    alert: Alert
+    entity_type: str  # "service" | "process"
+    entity_name: str
+    server_id: "UUID"
+    tenant_id: "UUID"
+
+
+async def _enqueue_auto_restart(params: _AutoRestartParams) -> None:
+    """Encola un comando de auto-restart si la entidad tiene auto_restart=true y no hay duplicados."""
+
+    # Verificar si ya hay un comando pendiente/running para esta entidad
+    existing = await params.session.scalar(
+        select(AgentCommand).where(
+            AgentCommand.server_id == params.server_id,
+            AgentCommand.entity_type == params.entity_type,
+            AgentCommand.entity_name == params.entity_name,
+            AgentCommand.status.in_([AgentCommandStatus.PENDING, AgentCommandStatus.RUNNING]),
+            AgentCommand.tenant_id == params.tenant_id,
+        )
+    )
+    if existing:
+        logger.debug(
+            "auto_restart_skipped_duplicate",
+            server_id=str(params.server_id),
+            entity_type=params.entity_type,
+            entity_name=params.entity_name,
+        )
+        return
+
+    # Crear comando
+    command = AgentCommand(
+        tenant_id=params.tenant_id,
+        server_id=params.server_id,
+        entity_type=params.entity_type,
+        entity_name=params.entity_name,
+        command=None,  # Usar comando por defecto según tipo/OS
+        status=AgentCommandStatus.PENDING,
+        scheduled_at=datetime.now(UTC),
+    )
+    params.session.add(command)
+    await params.session.flush()
+
+    logger.info(
+        "auto_restart_enqueued",
+        command_id=str(command.id),
+        alert_id=str(params.alert.id),
+        server_id=str(params.server_id),
+        entity_type=params.entity_type,
+        entity_name=params.entity_name,
+        tenant_id=str(params.tenant_id),
+    )
+
+
 async def _resolve_alert(alert: Alert, now: datetime, rule_id: "UUID") -> None:
     """Marca una alerta como RESOLVED (auto-resolución normal).
 
@@ -282,7 +340,7 @@ async def _evaluate_rule_for_service(
 
     if is_violating:
         if episode is None:
-            await _create_alert_and_deliveries(_AlertCreateParams(
+            alert = await _create_alert_and_deliveries(_AlertCreateParams(
                 session=session,
                 rule=rule,
                 tenant_id=rule.tenant_id,
@@ -292,6 +350,18 @@ async def _evaluate_rule_for_service(
                 server_id=service.server_id,
                 target_entity_id=service.id,
             ))
+
+            # Auto-restart si está habilitado en el servicio
+            if service.auto_restart:
+                await _enqueue_auto_restart(_AutoRestartParams(
+                    session=session,
+                    alert=alert,
+                    entity_type="service",
+                    entity_name=service.name,
+                    server_id=service.server_id,
+                    tenant_id=rule.tenant_id,
+                ))
+
             return True
         logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id), service_id=str(service.id))
     # No hay violación: reconciliar
@@ -337,7 +407,7 @@ async def _evaluate_rule_for_process(
 
     if is_violating:
         if episode is None:
-            await _create_alert_and_deliveries(_AlertCreateParams(
+            alert = await _create_alert_and_deliveries(_AlertCreateParams(
                 session=session,
                 rule=rule,
                 tenant_id=rule.tenant_id,
@@ -347,6 +417,18 @@ async def _evaluate_rule_for_process(
                 server_id=process.server_id,
                 target_entity_id=process.id,
             ))
+
+            # Auto-restart si está habilitado en el proceso
+            if process.auto_restart:
+                await _enqueue_auto_restart(_AutoRestartParams(
+                    session=session,
+                    alert=alert,
+                    entity_type="process",
+                    entity_name=process.name,
+                    server_id=process.server_id,
+                    tenant_id=rule.tenant_id,
+                ))
+
             return True
         logger.debug("alert_already_open", alert_id=str(episode.id), rule_id=str(rule.id), process_id=str(process.id))
     # No hay violación: reconciliar

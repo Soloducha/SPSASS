@@ -92,8 +92,8 @@ Set up Vitest in the web project and add unit tests for validation logic and For
 - [x] T3: Unit tests for Server Action validation — commit `81a2454`
 - [x] T4: Unit tests for FormData parsing — commit `6c69e59`
 - [x] T5: Unit tests for shared validation lib — commit `30b5ce6`
-- [ ] T6: CI integration
-- [ ] T7: Verify locally
+- [x] T6: CI integration — commit `e7ec4c9`
+- [x] T7: Verify locally — 95 tests pass, lint clean, build ok
 
 ## Next Step
 Start T1: Install Vitest + deps + config

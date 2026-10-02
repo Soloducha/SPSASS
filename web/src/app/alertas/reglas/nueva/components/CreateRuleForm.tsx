@@ -8,6 +8,7 @@
 import { useState, FormEvent, ChangeEvent } from 'react';
 import { createAlertRuleAction } from '../../actions';
 import type { ServerOverviewItem } from '@/lib/api/dashboard';
+import { validateField, validateChannels } from '@/lib/validation';
 
 const ENTITY_TYPES = ['server', 'service', 'process', 'job', 'metric'] as const;
 const OPERATORS = ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] as const;
@@ -53,6 +54,9 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
   const [emailTo, setEmailTo] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookHeaders, setWebhookHeaders] = useState('');
+  const [telegramChatId, setTelegramChatId] = useState('');
+  const [telegramThreadId, setTelegramThreadId] = useState('');
+  const [telegramSilent, setTelegramSilent] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
@@ -60,86 +64,7 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
 
   const hasEmail = emailTo.trim().length > 0;
   const hasWebhook = webhookUrl.trim().length > 0;
-
-  const validateField = (name: string, value: string): string | null => {
-    switch (name) {
-      case 'entity_type':
-        if (!value || !ENTITY_TYPES.includes(value as typeof ENTITY_TYPES[number])) {
-          return 'Tipo de entidad no válido';
-        }
-        return null;
-      case 'entity_id':
-        if (value && value.trim().length > 0) {
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (!uuidRegex.test(value.trim())) {
-            return 'ID de entidad debe ser un UUID válido';
-          }
-        }
-        return null;
-      case 'metric':
-        if (!value || value.trim().length === 0) {
-          return 'La métrica es obligatoria';
-        }
-        if (value.length > 100) {
-          return 'La métrica no puede exceder 100 caracteres';
-        }
-        return null;
-      case 'operator':
-        if (!value || !OPERATORS.includes(value as typeof OPERATORS[number])) {
-          return 'Operador no válido';
-        }
-        return null;
-      case 'threshold':
-        const num = parseFloat(value);
-        if (isNaN(num) || !Number.isFinite(num)) {
-          return 'El umbral debe ser un número válido';
-        }
-        return null;
-      case 'duration_s':
-        if (value) {
-          const num = parseInt(value, 10);
-          if (isNaN(num) || num < 1 || !Number.isInteger(num)) {
-            return 'La duración debe ser un entero positivo (segundos)';
-          }
-        }
-        return null;
-      case 'severity':
-        if (!value || !SEVERITIES.includes(value as typeof SEVERITIES[number])) {
-          return 'Severidad no válida';
-        }
-        return null;
-      case 'email_to':
-        if (value && value.trim().length > 0) {
-          const emails = value.split(',').map(e => e.trim()).filter(e => e.length > 0);
-          for (const email of emails) {
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-              return 'Formato de email inválido';
-            }
-          }
-        }
-        return null;
-      case 'webhook_url':
-        if (value && value.trim().length > 0) {
-          try {
-            new URL(value.trim());
-          } catch {
-            return 'URL de webhook inválida';
-          }
-        }
-        return null;
-      case 'webhook_headers':
-        if (value && value.trim().length > 0) {
-          try {
-            JSON.parse(value);
-          } catch {
-            return 'Headers de webhook deben ser JSON válido';
-          }
-        }
-        return null;
-      default:
-        return null;
-    }
-  };
+  const hasTelegram = telegramChatId.trim().length > 0;
 
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -166,6 +91,12 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
       setWebhookUrl(value);
     } else if (name === 'webhook_headers') {
       setWebhookHeaders(value);
+    } else if (name === 'telegram_chat_id') {
+      setTelegramChatId(value);
+    } else if (name === 'telegram_thread_id') {
+      setTelegramThreadId(value);
+    } else if (name === 'telegram_silent') {
+      setTelegramSilent(value === 'true');
     }
 
     // Validate on change
@@ -191,6 +122,8 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
       email_to: emailTo,
       webhook_url: webhookUrl,
       webhook_headers: webhookHeaders,
+      telegram_chat_id: telegramChatId,
+      telegram_thread_id: telegramThreadId,
     };
 
     for (const [name, value] of Object.entries(fieldValues)) {
@@ -199,8 +132,9 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
     }
 
     // Check at least one channel
-    if (!hasEmail && !hasWebhook) {
-      newErrors.channels = 'Se requiere al menos un canal (email o webhook)';
+    const channelsError = validateChannels(emailTo, webhookUrl, telegramChatId);
+    if (channelsError) {
+      newErrors.channels = channelsError;
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -223,6 +157,11 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
     if (hasWebhook) {
       formData.append('webhook_url', webhookUrl.trim());
       if (webhookHeaders.trim()) formData.append('webhook_headers', webhookHeaders.trim());
+    }
+    if (hasTelegram) {
+      formData.append('telegram_chat_id', telegramChatId.trim());
+      if (telegramThreadId.trim()) formData.append('telegram_thread_id', telegramThreadId.trim());
+      if (telegramSilent) formData.append('telegram_silent', 'true');
     }
 
     try {
@@ -247,6 +186,9 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
         setEmailTo('');
         setWebhookUrl('');
         setWebhookHeaders('');
+        setTelegramChatId('');
+        setTelegramThreadId('');
+        setTelegramSilent(false);
         setErrors({});
       }
     } catch (err) {
@@ -509,14 +451,14 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
             Canales de notificación
           </legend>
           <p className="mb-4 text-sm text-gray-500">
-            Configure al menos un canal. Puede usar ambos simultáneamente.
+            Configure al menos un canal. Puede usar email, webhook y telegram simultáneamente.
           </p>
 
           <div className="space-y-4">
             <div>
               <label htmlFor="email_to" className="block text-sm font-medium text-gray-700 mb-1">
                 Email - Destinatarios (separados por coma)
-                <span className="text-red-500" aria-hidden="true">{hasWebhook ? '' : ' *'}</span>
+                <span className="text-red-500" aria-hidden="true">{hasWebhook || hasTelegram ? '' : ' *'}</span>
               </label>
               <textarea
                 id="email_to"
@@ -542,7 +484,7 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
             <div>
               <label htmlFor="webhook_url" className="block text-sm font-medium text-gray-700 mb-1">
                 Webhook - URL
-                <span className="text-red-500" aria-hidden="true">{hasEmail ? '' : ' *'}</span>
+                <span className="text-red-500" aria-hidden="true">{hasEmail || hasTelegram ? '' : ' *'}</span>
               </label>
               <input
                 type="url"
@@ -585,6 +527,73 @@ export function CreateRuleForm({ servers }: CreateRuleFormProps) {
               <p className="mt-1 text-xs text-gray-500">
                 Objeto JSON con headers adicionales para el webhook.
               </p>
+            </div>
+
+            <div>
+              <label htmlFor="telegram_chat_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Telegram - Chat ID
+                <span className="text-red-500" aria-hidden="true">{hasEmail || hasWebhook ? '' : ' *'}</span>
+              </label>
+              <input
+                type="text"
+                id="telegram_chat_id"
+                name="telegram_chat_id"
+                value={telegramChatId}
+                onChange={handleChange}
+                placeholder="-1001234567890 o @canal_bot"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-20 min-h-[44px]"
+                aria-invalid={!!errors.telegram_chat_id}
+                aria-describedby={errors.telegram_chat_id ? 'telegram_chat_id-error' : undefined}
+              />
+              {errors.telegram_chat_id && (
+                <p id="telegram_chat_id-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {errors.telegram_chat_id}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                ID numérico del chat/grupo (ej: -1001234567890) o username del canal/bot (ej: @canal_bot).
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="telegram_thread_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Telegram - Thread ID (opcional)
+              </label>
+              <input
+                type="number"
+                id="telegram_thread_id"
+                name="telegram_thread_id"
+                value={telegramThreadId}
+                onChange={handleChange}
+                placeholder="42"
+                min="1"
+                step="1"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-20 min-h-[44px]"
+                aria-invalid={!!errors.telegram_thread_id}
+                aria-describedby={errors.telegram_thread_id ? 'telegram_thread_id-error' : undefined}
+              />
+              {errors.telegram_thread_id && (
+                <p id="telegram_thread_id-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {errors.telegram_thread_id}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                ID del tema (topic) en grupos con foros habilitados. Solo aplica si el grupo tiene topics.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="telegram_silent"
+                name="telegram_silent"
+                checked={telegramSilent}
+                onChange={e => { setTelegramSilent(e.target.checked); handleChange(e); }}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 focus:ring-2"
+              />
+              <label htmlFor="telegram_silent" className="text-sm font-medium text-gray-700 cursor-pointer">
+                Enviar sin notificación (silencioso)
+              </label>
             </div>
           </div>
 

@@ -75,6 +75,54 @@ jobs:
         run: CGO_ENABLED=0 go build -ldflags="-s -w" -o spsaas-agent ./cmd/agent
 
   # ──────────────────────────────────────────────
+  # Web dashboard — lint + typecheck
+  # ──────────────────────────────────────────────
+  # Why this job exists: docker-build compiles the web with `target: dev`
+  # (docker-compose.yml), which installs deps and runs `pnpm dev` WITHOUT
+  # compiling. `next build` is what runs the TypeScript check, so before this
+  # job a type error in the dashboard could merge unnoticed — which is exactly
+  # how PR #29 landed a broken AlertsTable.tsx.
+  web:
+    name: Web (lint + typecheck)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./web
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        # Pinned to match the Dockerfile, which activates pnpm via corepack.
+        with:
+          version: 12.8.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Same major as web/Dockerfile's base image (node:24-alpine).
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: ./web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Gate: real lint errors only. Style preferences are eslint-config-next's call.
+      - name: ESLint
+        run: pnpm run lint
+
+      # Unit tests for validation logic, FormData parsing, and shared rules.
+      - name: Vitest
+        run: pnpm run test
+
+      # `next build` runs the TypeScript compiler and fails on type errors.
+      # This is the check docker-build cannot provide for the web.
+      - name: Next build (includes TypeScript check)
+        run: pnpm run build
+
+  # ──────────────────────────────────────────────
   # Docker build — validates docker-compose builds
   # ──────────────────────────────────────────────
   docker-build:

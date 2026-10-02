@@ -168,6 +168,54 @@ class TestAlertRuleChannelsValidation:
         rule = AlertRuleUpdate(threshold=90.0, channels=None)
         assert rule.channels is None
 
+    def test_create_valid_telegram_only(self) -> None:
+        """Create with valid telegram channel passes."""
+        rule = AlertRuleCreate(
+            entity_type="server",  # type: ignore[arg-type]
+            metric="cpu_usage",
+            operator="gt",  # type: ignore[arg-type]
+            threshold=80.0,
+            channels={"telegram": {"chat_id": "-1001234567890"}},
+        )
+        assert rule.channels == {"telegram": {"chat_id": "-1001234567890"}}
+
+    def test_create_valid_telegram_with_thread_and_silent(self) -> None:
+        """Create with telegram channel including thread_id and silent passes."""
+        rule = AlertRuleCreate(
+            entity_type="server",  # type: ignore[arg-type]
+            metric="cpu_usage",
+            operator="gt",  # type: ignore[arg-type]
+            threshold=80.0,
+            channels={"telegram": {"chat_id": "@canal_bot", "thread_id": 42, "silent": True}},
+        )
+        assert rule.channels == {"telegram": {"chat_id": "@canal_bot", "thread_id": 42, "silent": True}}
+
+    def test_create_valid_all_three_channels(self) -> None:
+        """Create with webhook, email and telegram channels passes."""
+        rule = AlertRuleCreate(
+            entity_type="server",  # type: ignore[arg-type]
+            metric="cpu_usage",
+            operator="gt",  # type: ignore[arg-type]
+            threshold=80.0,
+            channels={
+                "webhook": {"url": "https://example.com/webhook"},
+                "email": {"to": ["ops@example.com"]},
+                "telegram": {"chat_id": "-1001234567890"},
+            },
+        )
+        assert "webhook" in rule.channels
+        assert "email" in rule.channels
+        assert "telegram" in rule.channels
+        assert rule.channels["telegram"]["chat_id"] == "-1001234567890"
+
+    def test_update_valid_telegram_channel(self) -> None:
+        """Update with valid telegram channel passes."""
+        rule = AlertRuleUpdate(
+            channels={"telegram": {"chat_id": "@new_channel", "silent": False}},
+        )
+        # Backend only includes silent when True
+        assert rule.channels == {"telegram": {"chat_id": "@new_channel"}}
+
     # ── Invalid cases ──
 
     def test_create_empty_channels_fails(self) -> None:
@@ -190,10 +238,22 @@ class TestAlertRuleChannelsValidation:
                 metric="cpu_usage",
                 operator="gt",  # type: ignore[arg-type]
                 threshold=80.0,
-                channels={"sms": {}},
+                channels={"discord": {}},
             )
         assert "unknown channel keys" in str(exc.value).lower()
-        assert "sms" in str(exc.value).lower()
+        assert "discord" in str(exc.value).lower()
+
+    def test_create_telegram_missing_chat_id_fails(self) -> None:
+        """Create with telegram missing chat_id fails."""
+        with pytest.raises(ValidationError) as exc:
+            AlertRuleCreate(
+                entity_type="server",  # type: ignore[arg-type]
+                metric="cpu_usage",
+                operator="gt",  # type: ignore[arg-type]
+                threshold=80.0,
+                channels={"telegram": {}},
+            )
+        assert "chat_id" in str(exc.value).lower()
 
     def test_create_webhook_missing_url_fails(self) -> None:
         """Create with webhook missing url fails."""
@@ -252,8 +312,15 @@ class TestAlertRuleChannelsValidation:
     def test_update_unknown_channel_key_fails(self) -> None:
         """Update with unknown channel key fails."""
         with pytest.raises(ValidationError) as exc:
-            AlertRuleUpdate(channels={"sms": {}})
+            AlertRuleUpdate(channels={"discord": {}})
         assert "unknown channel keys" in str(exc.value).lower()
+        assert "discord" in str(exc.value).lower()
+
+    def test_update_telegram_missing_chat_id_fails(self) -> None:
+        """Update with telegram missing chat_id fails."""
+        with pytest.raises(ValidationError) as exc:
+            AlertRuleUpdate(channels={"telegram": {}})
+        assert "chat_id" in str(exc.value).lower()
 
     def test_update_webhook_missing_url_fails(self) -> None:
         """Update with webhook missing url fails."""

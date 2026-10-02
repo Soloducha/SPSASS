@@ -35,15 +35,8 @@ const STATUS_STYLES: Record<AlertStatus, string> = {
   resolved: 'bg-emerald-100 text-emerald-800',
 };
 
-const SILENCED_STYLES = {
-  true: 'bg-purple-100 text-purple-800',
-  false: 'bg-gray-100 text-gray-800',
-};
-
-const SILENCED_LABELS = {
-  true: 'Silenciada',
-  false: 'Activa',
-};
+const SILENCED_BADGE_STYLE = 'bg-purple-100 text-purple-800';
+const SILENCED_BADGE_LABEL = 'Silenciada';
 
 const SEVERITY_STYLES: Record<AlertSeverity, string> = {
   info: 'bg-gray-100 text-gray-800',
@@ -68,11 +61,13 @@ export function AlertsTable({
 
   const [isLoading, setIsLoading] = useState(false);
 
-  // Filters and pagination state derived from URL (initialParams as fallback for first render)
+  // Filters and pagination state derived from URL (initialParams as fallback for first render).
+  // Every filter is held as a string: select values are strings, and initialParams
+  // arrives with booleans/nulls for the silenced filter.
   const [filters, setFilters] = useState({
     status: initialParams.status ?? '',
     severity: initialParams.severity ?? '',
-    silenced: initialParams.silenced ?? '',
+    silenced: String(initialParams.silenced ?? ''),
     rule_id: initialParams.rule_id ?? '',
   });
   const [offset, setOffset] = useState(initialParams.offset);
@@ -328,11 +323,9 @@ useEffect(() => {
                     </span>
                     {alert.silenced && (
                       <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ml-1.5 ${
-                          SILENCED_STYLES[alert.silenced.toString()]
-                        }`}
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ml-1.5 ${SILENCED_BADGE_STYLE}`}
                       >
-                        {SILENCED_LABELS[alert.silenced.toString()]}
+                        {SILENCED_BADGE_LABEL}
                       </span>
                     )}
                   </td>

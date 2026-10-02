@@ -11,6 +11,10 @@ coverage
 out/
 build
 
+# Copied out by the standalone build from src/app/favicon.ico.
+# The real favicon is tracked at src/app/favicon.ico.
+public/favicon.ico
+
 # production
 dist
 

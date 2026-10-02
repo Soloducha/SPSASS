@@ -11,19 +11,18 @@ import {
   deleteAlertRule,
   toggleRuleEnabled,
   updateAlertRule,
-  type AlertRuleCreate,
   type AlertRuleResponse,
-  type AlertRuleUpdate,
   type FetchResult,
 } from '@/lib/api/rules';
 import { getDashboardToken } from '@/lib/config';
+import {
+  validateCreateRuleData,
+  validateEntityId,
+  validateRuleId,
+  validateUpdateRuleData,
+} from '@/lib/rule-validation';
+import { parseCreateRuleFormData, parseUpdateRuleFormData } from '@/lib/rule-form-parsing';
 import { mapApiError } from './utils';
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const ALLOWED_ENTITY_TYPES = ['server', 'service', 'process', 'job', 'metric'] as const;
-const ALLOWED_OPERATORS = ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'] as const;
-const ALLOWED_SEVERITIES = ['info', 'warning', 'critical'] as const;
 
 interface CreateRuleResult {
   rule: AlertRuleResponse | null;
@@ -43,122 +42,6 @@ interface ToggleRuleResult {
 interface DeleteRuleResult {
   success: boolean;
   error?: string;
-}
-
-function validateRuleId(ruleId: string): string | null {
-  if (!ruleId || !UUID_REGEX.test(ruleId)) {
-    return 'ID de regla inválido';
-  }
-  return null;
-}
-
-function validateEntityId(entityId: string | undefined): string | null {
-  if (entityId && entityId.trim().length > 0) {
-    const trimmed = entityId.trim();
-    if (!UUID_REGEX.test(trimmed)) {
-      return 'ID de entidad debe ser un UUID válido';
-    }
-  }
-  return null;
-}
-
-function validateCreateRuleData(data: AlertRuleCreate): string | null {
-  if (!data.entity_type || !ALLOWED_ENTITY_TYPES.includes(data.entity_type)) {
-    return 'Tipo de entidad no válido';
-  }
-  if (!data.metric || data.metric.trim().length === 0 || data.metric.length > 100) {
-    return 'La métrica es obligatoria (máximo 100 caracteres)';
-  }
-  if (!data.operator || !ALLOWED_OPERATORS.includes(data.operator)) {
-    return 'Operador no válido';
-  }
-  if (typeof data.threshold !== 'number' || !Number.isFinite(data.threshold)) {
-    return 'El umbral debe ser un número válido';
-  }
-  if (data.duration_s !== undefined && (data.duration_s < 1 || !Number.isInteger(data.duration_s))) {
-    return 'La duración debe ser un entero positivo (segundos)';
-  }
-  if (data.severity && !ALLOWED_SEVERITIES.includes(data.severity)) {
-    return 'Severidad no válida';
-  }
-  if (!data.channels || Object.keys(data.channels).length === 0) {
-    return 'Se requiere al menos un canal (email o webhook)';
-  }
-  if (data.channels.email) {
-    if (!Array.isArray(data.channels.email.to) || data.channels.email.to.length === 0) {
-      return 'El canal email requiere al menos un destinatario';
-    }
-    for (const email of data.channels.email.to) {
-      if (typeof email !== 'string' || email.trim().length === 0) {
-        return 'Todos los destinatarios email deben ser cadenas no vacías';
-      }
-      // Basic email format validation
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-        return 'Formato de email inválido en destinatarios';
-      }
-    }
-  }
-  if (data.channels.webhook) {
-    if (typeof data.channels.webhook.url !== 'string' || data.channels.webhook.url.trim().length === 0) {
-      return 'El canal webhook requiere una URL';
-    }
-    try {
-      new URL(data.channels.webhook.url);
-    } catch {
-      return 'URL de webhook inválida';
-    }
-  }
-  return null;
-}
-
-function validateUpdateRuleData(data: AlertRuleUpdate): string | null {
-  if (data.entity_type !== undefined && !ALLOWED_ENTITY_TYPES.includes(data.entity_type)) {
-    return 'Tipo de entidad no válido';
-  }
-  if (data.metric !== undefined && (data.metric.trim().length === 0 || data.metric.length > 100)) {
-    return 'La métrica es obligatoria (máximo 100 caracteres)';
-  }
-  if (data.operator !== undefined && !ALLOWED_OPERATORS.includes(data.operator)) {
-    return 'Operador no válido';
-  }
-  if (data.threshold !== undefined && (typeof data.threshold !== 'number' || !Number.isFinite(data.threshold))) {
-    return 'El umbral debe ser un número válido';
-  }
-  if (data.duration_s !== undefined && (data.duration_s < 1 || !Number.isInteger(data.duration_s))) {
-    return 'La duración debe ser un entero positivo (segundos)';
-  }
-  if (data.severity !== undefined && !ALLOWED_SEVERITIES.includes(data.severity)) {
-    return 'Severidad no válida';
-  }
-  if (data.channels !== undefined) {
-    if (!data.channels || Object.keys(data.channels).length === 0) {
-      return 'Se requiere al menos un canal (email o webhook)';
-    }
-    if (data.channels.email) {
-      if (!Array.isArray(data.channels.email.to) || data.channels.email.to.length === 0) {
-        return 'El canal email requiere al menos un destinatario';
-      }
-      for (const email of data.channels.email.to) {
-        if (typeof email !== 'string' || email.trim().length === 0) {
-          return 'Todos los destinatarios email deben ser cadenas no vacías';
-        }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-          return 'Formato de email inválido en destinatarios';
-        }
-      }
-    }
-    if (data.channels.webhook) {
-      if (typeof data.channels.webhook.url !== 'string' || data.channels.webhook.url.trim().length === 0) {
-        return 'El canal webhook requiere una URL';
-      }
-      try {
-        new URL(data.channels.webhook.url);
-      } catch {
-        return 'URL de webhook inválida';
-      }
-    }
-  }
-  return null;
 }
 
 async function validateToken(): Promise<string | null> {
@@ -182,53 +65,10 @@ export async function createAlertRuleAction(
     return { rule: null, error: tokenError };
   }
 
-  // Parse form data
-  const entityType = formData.get('entity_type') as string;
-  const entityId = formData.get('entity_id') as string;
-  const metric = formData.get('metric') as string;
-  const operator = formData.get('operator') as string;
-  const threshold = parseFloat(formData.get('threshold') as string);
-  const duration_s = formData.get('duration_s') ? parseInt(formData.get('duration_s') as string, 10) : 60;
-  const severity = (formData.get('severity') as string) || 'warning';
-  const isActive = formData.get('is_active') === 'true';
-
-  // Parse channels
-  const emailToRaw = formData.get('email_to') as string;
-  const webhookUrl = formData.get('webhook_url') as string;
-  const webhookHeadersRaw = formData.get('webhook_headers') as string;
-
-  const channels: AlertRuleCreate['channels'] = {};
-
-  if (emailToRaw && emailToRaw.trim().length > 0) {
-    const emails = emailToRaw.split(',').map(e => e.trim()).filter(e => e.length > 0);
-    if (emails.length > 0) {
-      channels.email = { to: emails };
-    }
+  const { ruleData, error: parseError } = parseCreateRuleFormData(formData);
+  if (parseError || !ruleData) {
+    return { rule: null, error: parseError ?? 'Error al parsear los datos del formulario' };
   }
-
-  if (webhookUrl && webhookUrl.trim().length > 0) {
-    let headers: Record<string, string> = {};
-    if (webhookHeadersRaw && webhookHeadersRaw.trim().length > 0) {
-      try {
-        headers = JSON.parse(webhookHeadersRaw);
-      } catch {
-        return { rule: null, error: 'Headers de webhook deben ser JSON válido' };
-      }
-    }
-    channels.webhook = { url: webhookUrl.trim(), headers };
-  }
-
-  const ruleData: AlertRuleCreate = {
-    entity_type: entityType as AlertRuleCreate['entity_type'],
-    entity_id: entityId && entityId.trim().length > 0 ? entityId.trim() : undefined,
-    metric: metric.trim(),
-    operator: operator as AlertRuleCreate['operator'],
-    threshold,
-    duration_s,
-    severity: severity as AlertRuleCreate['severity'],
-    channels,
-    is_active: isActive,
-  };
 
   // Validate (including entity_id UUID guard)
   const validationError = validateCreateRuleData(ruleData);
@@ -277,59 +117,10 @@ export async function updateAlertRuleAction(
     return { rule: null, error: idError };
   }
 
-  // Parse form data (all optional for PATCH)
-  const entityType = formData.get('entity_type') as string | null;
-  const entityId = formData.get('entity_id') as string | null;
-  const metric = formData.get('metric') as string | null;
-  const operator = formData.get('operator') as string | null;
-  const thresholdStr = formData.get('threshold') as string | null;
-  const durationStr = formData.get('duration_s') as string | null;
-  const severity = formData.get('severity') as string | null;
-  const isActiveStr = formData.get('is_active') as string | null;
-
-  // Parse channels (optional, but if present must be valid)
-  const emailToRaw = formData.get('email_to') as string | null;
-  const webhookUrl = formData.get('webhook_url') as string | null;
-  const webhookHeadersRaw = formData.get('webhook_headers') as string | null;
-
-  const channels: AlertRuleUpdate['channels'] = {};
-
-  if (emailToRaw !== null && emailToRaw.trim().length > 0) {
-    const emails = emailToRaw.split(',').map(e => e.trim()).filter(e => e.length > 0);
-    if (emails.length > 0) {
-      channels.email = { to: emails };
-    }
-  } else if (emailToRaw === '') {
-    // Explicitly clear email channel
-    channels.email = undefined;
+  const { ruleData, error: parseError } = parseUpdateRuleFormData(formData);
+  if (parseError || !ruleData) {
+    return { rule: null, error: parseError ?? 'Error al parsear los datos del formulario' };
   }
-
-  if (webhookUrl !== null && webhookUrl.trim().length > 0) {
-    let headers: Record<string, string> = {};
-    if (webhookHeadersRaw !== null && webhookHeadersRaw.trim().length > 0) {
-      try {
-        headers = JSON.parse(webhookHeadersRaw);
-      } catch {
-        return { rule: null, error: 'Headers de webhook deben ser JSON válido' };
-      }
-    }
-    channels.webhook = { url: webhookUrl.trim(), headers };
-  } else if (webhookUrl === '') {
-    // Explicitly clear webhook channel
-    channels.webhook = undefined;
-  }
-
-  const ruleData: AlertRuleUpdate = {};
-
-  if (entityType !== null) ruleData.entity_type = entityType as AlertRuleUpdate['entity_type'];
-  if (entityId !== null) ruleData.entity_id = entityId.trim().length > 0 ? entityId.trim() : null;
-  if (metric !== null) ruleData.metric = metric.trim();
-  if (operator !== null) ruleData.operator = operator as AlertRuleUpdate['operator'];
-  if (thresholdStr !== null) ruleData.threshold = parseFloat(thresholdStr);
-  if (durationStr !== null) ruleData.duration_s = parseInt(durationStr, 10);
-  if (severity !== null) ruleData.severity = severity as AlertRuleUpdate['severity'];
-  if (isActiveStr !== null) ruleData.is_active = isActiveStr === 'true';
-  if (Object.keys(channels).length > 0) ruleData.channels = channels;
 
   // Validate (including entity_id UUID guard)
   const validationError = validateUpdateRuleData(ruleData);

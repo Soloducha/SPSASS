@@ -15,9 +15,16 @@ export interface EmailChannelConfig {
   to: string[];
 }
 
+export interface TelegramChannelConfig {
+  chat_id: string;
+  thread_id?: number;
+  silent?: boolean;
+}
+
 export interface AlertRuleChannels {
   webhook?: WebhookChannelConfig;
   email?: EmailChannelConfig;
+  telegram?: TelegramChannelConfig;
 }
 
 export interface AlertRuleCreate {

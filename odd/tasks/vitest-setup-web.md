@@ -88,7 +88,7 @@ Set up Vitest in the web project and add unit tests for validation logic and For
 
 ## Progress
 - [x] T1: Install Vitest + deps + config — commit `ee8e3ee`
-- [ ] T2: Extract shared validation to lib/validation.ts
+- [x] T2: Extract shared validation to lib/validation.ts — commit `f2bd335`
 - [ ] T3: Unit tests for Server Action validation
 - [ ] T4: Unit tests for FormData parsing
 - [ ] T5: Unit tests for shared validation lib

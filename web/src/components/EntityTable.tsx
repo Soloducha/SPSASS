@@ -5,7 +5,7 @@
 import { type ReactNode } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
-interface PaginationProps {
+export interface PaginationProps {
   currentPage: number;
   hasNext: boolean;
   onPrevious: () => void;

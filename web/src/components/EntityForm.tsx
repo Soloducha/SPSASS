@@ -20,7 +20,7 @@ export interface FormField {
 export interface EntityFormProps<T extends Record<string, unknown>> {
   fields: FormField[];
   initialData?: Partial<T>;
-  onSubmit: (data: T) => Promise<{ success: boolean; message: string; data?: T }>;
+  action: (formData: FormData) => void;
   submitLabel?: string;
   cancelHref?: string;
   isLoading?: boolean;
@@ -32,7 +32,7 @@ export interface EntityFormProps<T extends Record<string, unknown>> {
 export function EntityForm<T extends Record<string, unknown>>({
   fields,
   initialData = {},
-  onSubmit,
+  action,
   submitLabel = 'Guardar',
   cancelHref,
   isLoading: externalLoading,
@@ -94,11 +94,13 @@ export function EntityForm<T extends Record<string, unknown>>({
 
     setLocalLoading(true);
     try {
-      const result = await onSubmit(formData as T);
-      if (!result.success) {
-        // Error manejado por el Server Action
-        return;
-      }
+      const fd = new FormData();
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          fd.append(key, String(value));
+        }
+      });
+      await action(fd);
       // Éxito: el Server Action debería hacer redirect
     } finally {
       setLocalLoading(false);

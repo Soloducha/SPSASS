@@ -87,7 +87,7 @@ Set up Vitest in the web project and add unit tests for validation logic and For
 | T7 | Delegated direct (verifier) | Commands: test, build, lint |
 
 ## Progress
-- [ ] T1: Install Vitest + deps + config
+- [x] T1: Install Vitest + deps + config — commit `ee8e3ee`
 - [ ] T2: Extract shared validation to lib/validation.ts
 - [ ] T3: Unit tests for Server Action validation
 - [ ] T4: Unit tests for FormData parsing

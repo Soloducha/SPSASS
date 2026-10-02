@@ -30,6 +30,19 @@ pnpm install
 SPSAAS_API_URL=http://localhost:8000 SPSAAS_DASHBOARD_TOKEN=<jwt> pnpm dev   # http://localhost:3000
 ```
 
+## Tests (Vitest)
+
+```bash
+cd web
+pnpm run test        # 95 unit tests: validation, FormData parsing, Telegram channel
+pnpm run test:watch  # Watch mode
+pnpm run test:ui     # Vitest UI
+pnpm run lint        # ESLint
+pnpm run build       # TypeScript check (next build)
+```
+
+CI job `web` runs all three: `test`, `lint`, `build` (Node 24, pnpm 12.8.1).
+
 ## Docker
 
 ```bash

@@ -168,8 +168,9 @@ SPSAAS/
   - [`quality-gate.md`](odd/tasks/quality-gate.md) — Gate de calidad (mypy 0 + ruff pragmático)
   - [`review-followups.md`](odd/tasks/review-followups.md) — Follow-ups de la review quality-gate
   - [`next16-web.md`](odd/tasks/next16-web.md), [`deps-refresh.md`](odd/tasks/deps-refresh.md) — Web Next 16 + refresh de dependencias
-  - [`alert-web-ui.md`](odd/tasks/alert-web-ui.md) — UI web de alertas (overview, reglas, edición, accesibilidad)
-  - [`alert-timestamp-timezone-drift.md`](odd/tasks/alert-timestamp-timezone-drift.md) — Fix de timezone en timestamps de alertas
+- [`alert-web-ui.md`](odd/tasks/alert-web-ui.md) — UI web de alertas (overview, reglas, edición, accesibilidad)
+- [`alert-timestamp-timezone-drift.md`](odd/tasks/alert-timestamp-timezone-drift.md) — Fix de timezone en timestamps de alertas
+- [`vitest-setup-web.md`](odd/tasks/vitest-setup-web.md) — Vitest infra + tests unitarios validación/FormData (Telegram) + CI web
 - Sub-READMEs: [`api/README.md`](api/README.md), [`agent/README.md`](agent/README.md), [`web/README.md`](web/README.md)
 
 ---
@@ -201,9 +202,16 @@ mypy app
 cd agent
 go vet ./...
 go test ./...
+
+# Web — tests unitarios (Vitest) + quality gate
+cd web
+pnpm run test
+pnpm run lint
+pnpm run build
 ```
 
 Baseline API: **120 passed, 1 skipped, 1 xfailed, 2 xpassed pre-existentes** (no tocar) — verificado 2026-09-28.
+Web: **95 tests Vitest pass**, lint clean, build ok — verificado 2026-10-02 (PR #30).
 
 ---
 
@@ -215,6 +223,7 @@ Workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — corre en pu
 |-----|-----------|
 | `python-api` | `ruff check app/` + `mypy app` + `pytest` (SQLite in-memory) |
 | `go-agent` | `go vet` + `go test` + build estático (`CGO_ENABLED=0`) |
+| `web` | `pnpm run test` + `pnpm run lint` + `pnpm run build` (Node 24, pnpm 12.8.1) |
 | `docker-build` | `docker compose build --parallel` |
 
 ---

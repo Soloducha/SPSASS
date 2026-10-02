@@ -95,5 +95,5 @@ Set up Vitest in the web project and add unit tests for validation logic and For
 - [x] T6: CI integration — commit `e7ec4c9`
 - [x] T7: Verify locally — 95 tests pass, lint clean, build ok
 
-## Next Step
-Start T1: Install Vitest + deps + config
+## Status
+**COMPLETED** — All tasks done. Merged via PR #30 (`53e21a8`). Vitest infrastructure + 95 unit tests + CI integration + Telegram channel in web forms.

@@ -1,4 +1,5 @@
 """Exportación de todos los modelos."""
+from app.models.agent_command import AgentCommand, AgentCommandEntityType, AgentCommandStatus
 from app.models.alert import (
     Alert,
     AlertDelivery,
@@ -65,6 +66,10 @@ __all__ = [
     "AlertStatus",
     "AlertOperator",
     "EntityType",
+    # AgentCommand
+    "AgentCommand",
+    "AgentCommandEntityType",
+    "AgentCommandStatus",
     # Report
     "Report",
     "ReportType",

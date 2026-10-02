@@ -1,4 +1,5 @@
 """Repositorios base con scoping de tenant automático."""
+from app.repositories.agent_command import AgentCommandRepository
 from app.repositories.alert import AlertRepository, AlertRuleRepository
 from app.repositories.base import TenantScopedRepository
 from app.repositories.job import JobRepository, JobRunRepository
@@ -15,4 +16,5 @@ __all__ = [
     "JobRunRepository",
     "AlertRuleRepository",
     "AlertRepository",
+    "AgentCommandRepository",
 ]

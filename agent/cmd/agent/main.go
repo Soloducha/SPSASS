@@ -63,7 +63,11 @@ func main() {
 	heartbeatTicker := time.NewTicker(heartbeatInterval)
 	defer heartbeatTicker.Stop()
 
-	logger.Info("entering collection loop", "metrics_interval", cfg.Interval, "heartbeat_interval", heartbeatInterval)
+	// Command polling every 30 seconds (independent of metrics interval)
+	commandsTicker := time.NewTicker(30 * time.Second)
+	defer commandsTicker.Stop()
+
+	logger.Info("entering collection loop", "metrics_interval", cfg.Interval, "heartbeat_interval", heartbeatInterval, "commands_interval", commandsTicker)
 
 	// Track if we've had at least one successful metrics send
 	metricsSent := false
@@ -152,6 +156,39 @@ func main() {
 				continue
 			}
 			logger.Debug("heartbeat sent successfully")
+
+		case <-commandsTicker.C:
+			// Poll for pending commands from API
+			commands, err := snd.GetPendingCommands(ctx, serverID)
+			if err != nil {
+				logger.Error("get pending commands failed", "error", err)
+			} else if len(commands) > 0 {
+				logger.Info("received commands", "count", len(commands))
+				for _, cmd := range commands {
+					// Execute command
+					ctxCmd, cancelCmd := context.WithTimeout(ctx, 60*time.Second)
+					exitCode, output, execErr := collector.ExecuteRestart(ctxCmd, cmd.EntityType, cmd.EntityName, cmd.Command)
+					cancelCmd()
+
+					result := sender.AgentCommandResult{
+						Status:     "success",
+						ExitCode:   exitCode,
+						OutputTail: output,
+					}
+					if execErr != nil {
+						result.Status = "failed"
+						result.OutputTail = execErr.Error() + "\n" + output
+						logger.Error("command execution failed", "command_id", cmd.ID, "entity", cmd.EntityType+":"+cmd.EntityName, "error", execErr)
+					} else {
+						logger.Info("command executed", "command_id", cmd.ID, "entity", cmd.EntityType+":"+cmd.EntityName, "exit_code", exitCode)
+					}
+
+					// Report result back to API
+					if err := snd.ReportCommandResult(ctx, cmd.ID, result); err != nil {
+						logger.Error("report command result failed", "command_id", cmd.ID, "error", err)
+					}
+				}
+			}
 		}
 	}
 }

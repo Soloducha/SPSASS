@@ -277,3 +277,24 @@ func isRetryable(err error) bool {
 	// Retry on network errors (timeout, connection refused, etc.)
 	return true
 }
+
+// GetPendingCommands fetches pending commands for the server from the API.
+func (s *Sender) GetPendingCommands(ctx context.Context, serverID string) ([]AgentCommand, error) {
+	url := fmt.Sprintf("%s/api/v1/servers/%s/commands", s.baseURL, serverID)
+	var commands []AgentCommand
+	err := s.doWithRetry(ctx, http.MethodGet, url, nil, &commands)
+	if err != nil {
+		return nil, err
+	}
+	return commands, nil
+}
+
+// ReportCommandResult reports the result of a command execution to the API.
+func (s *Sender) ReportCommandResult(ctx context.Context, commandID string, result AgentCommandResult) error {
+	url := fmt.Sprintf("%s/api/v1/agent-commands/%s/result", s.baseURL, commandID)
+	body, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("marshal command result: %w", err)
+	}
+	return s.doWithRetry(ctx, http.MethodPatch, url, body, nil)
+}

@@ -531,3 +531,75 @@ class EntitiesIngestResponse(BaseModel):
     matched_processes: int
     matched_services: int
     server_id: UUID
+
+
+# ──────────────────────────────────────────────
+# Agent Commands Schemas (Auto-restart)
+# ──────────────────────────────────────────────
+
+from typing import Literal
+
+AgentCommandEntityType = Literal["service", "process"]
+AgentCommandStatus = Literal["pending", "running", "success", "failed"]
+
+
+class AgentCommandCreate(BaseModel):
+    """Request para encolar un comando de restart."""
+
+    entity_type: AgentCommandEntityType
+    entity_name: str = Field(min_length=1, max_length=255)
+    command: str | None = Field(default=None, max_length=500)  # override opcional
+
+
+class AgentCommandResponse(BaseModel):
+    """Response de comando de agente."""
+
+    id: UUID
+    tenant_id: UUID
+    server_id: UUID
+    entity_type: str
+    entity_name: str
+    command: str | None
+    status: str
+    attempts: int
+    max_attempts: int
+    backoff_s: int
+    scheduled_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    exit_code: int | None
+    output_tail: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AgentCommandListParams(BaseModel):
+    """Parámetros de consulta para listar comandos de agente."""
+
+    server_id: UUID | None = None
+    status: str | None = None
+    entity_type: str | None = None
+    limit: int = Field(default=100, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+
+
+# Agent-facing schemas (API key auth)
+class AgentCommandPendingResponse(BaseModel):
+    """Comando pendiente para el agente."""
+
+    id: UUID
+    entity_type: str
+    entity_name: str
+    command: str | None
+    max_attempts: int
+    backoff_s: int
+
+
+class AgentCommandResultRequest(BaseModel):
+    """Request para reportar resultado de comando (agente)."""
+
+    status: AgentCommandStatus
+    exit_code: int | None = None
+    output_tail: str | None = None

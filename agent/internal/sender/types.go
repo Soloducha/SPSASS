@@ -37,3 +37,20 @@ type ServiceState struct {
 	Name  string `json:"name"`
 	State string `json:"state"`
 }
+
+// AgentCommand represents a command for the agent to execute.
+type AgentCommand struct {
+	ID           string `json:"id"`
+	EntityType   string `json:"entity_type"`
+	EntityName   string `json:"entity_name"`
+	Command      string `json:"command,omitempty"`
+	MaxAttempts  int    `json:"max_attempts"`
+	BackoffSeconds int  `json:"backoff_seconds"`
+}
+
+// AgentCommandResult represents the result of command execution.
+type AgentCommandResult struct {
+	Status     string `json:"status"`      // success, failed
+	ExitCode   int    `json:"exit_code,omitempty"`
+	OutputTail string `json:"output_tail,omitempty"`
+}

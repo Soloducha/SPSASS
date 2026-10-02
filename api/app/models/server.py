@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TenantAwareMixin, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from app.models.agent_command import AgentCommand
     from app.models.job import Job
     from app.models.process import Process
     from app.models.service import Service
@@ -49,6 +50,9 @@ class Server(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     )
     jobs: Mapped[list["Job"]] = relationship(
         "Job", back_populates="server", lazy="selectin", cascade="all, delete-orphan"
+    )
+    agent_commands: Mapped[list["AgentCommand"]] = relationship(
+        "AgentCommand", back_populates="server", lazy="selectin", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

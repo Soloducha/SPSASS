@@ -41,11 +41,31 @@ export function Pagination({ currentPage, hasNext, onPrevious, onNext, isLoading
   );
 }
 
+export type ColumnType =
+  | 'text'
+  | 'badge'
+  | 'date'
+  | 'boolean'
+  | 'link'
+  | 'custom';
+
 export interface ColumnConfig<T> {
   key: string;
   header: string;
-  render?: (item: T) => ReactNode;
+  type?: ColumnType;
+  /** For 'badge' type: maps value to variant */
+  badgeVariantMap?: Record<string, 'default' | 'success' | 'warning' | 'error' | 'info'>;
+  /** For 'link' type: base URL path */
+  linkBasePath?: string;
+  /** For 'date' type: locale string options */
+  dateOptions?: Intl.DateTimeFormatOptions;
+  /** For 'boolean' type: true/false labels */
+  booleanLabels?: { true: string; false: string };
   className?: string;
+  /** For 'text' type: truncate to N characters */
+  truncate?: number;
+  /** Custom cell renderer key - implemented in renderCell() */
+  customRenderer?: string;
 }
 
 export interface EntityTableProps<T> {
@@ -58,6 +78,63 @@ export interface EntityTableProps<T> {
   rowKey: (item: T) => string;
   onRowClick?: (item: T) => void;
   actions?: (item: T) => ReactNode;
+}
+
+function renderCell<T>(item: T, col: ColumnConfig<T>): ReactNode {
+  const value = (item as Record<string, unknown>)[col.key];
+
+  if (value === undefined || value === null) {
+    return <span className="text-gray-400">—</span>;
+  }
+
+  switch (col.type) {
+    case 'badge': {
+      const variant = col.badgeVariantMap?.[String(value)] ?? 'default';
+      return (
+        <span
+          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+            {
+              default: 'bg-gray-100 text-gray-800',
+              success: 'bg-green-100 text-green-800',
+              warning: 'bg-yellow-100 text-yellow-800',
+              error: 'bg-red-100 text-red-800',
+              info: 'bg-blue-100 text-blue-800',
+            }[variant]
+          }`}
+        >
+          {String(value)}
+        </span>
+      );
+    }
+    case 'date': {
+      if (!value) return <span className="text-gray-400">—</span>;
+      const date = new Date(String(value));
+      return date.toLocaleString(undefined, col.dateOptions);
+    }
+    case 'boolean': {
+      const labels = col.booleanLabels ?? { true: 'Sí', false: 'No' };
+      return <span>{Boolean(value) ? labels.true : labels.false}</span>;
+    }
+    case 'link': {
+      const basePath = col.linkBasePath ?? '';
+      const href = `${basePath}${value}`;
+      return (
+        <a href={href} className="text-blue-600 hover:underline font-medium">
+          {String(value)}
+        </a>
+      );
+    }
+    case 'custom':
+      // Custom renderers are handled by the parent via a map
+      return String(value);
+    default: {
+      const str = String(value);
+      if (col.truncate && str.length > col.truncate) {
+        return str.slice(0, col.truncate) + '…';
+      }
+      return str;
+    }
+  }
 }
 
 export function EntityTable<T>({
@@ -160,7 +237,7 @@ export function EntityTable<T>({
             >
               {columns.map((col) => (
                 <td key={col.key} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${col.className || ''}`}>
-                  {col.render ? col.render(item) : String((item as Record<string, unknown>)[col.key] ?? '')}
+                  {renderCell(item, col)}
                 </td>
               ))}
               {actions && (

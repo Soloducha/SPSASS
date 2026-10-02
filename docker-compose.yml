@@ -137,6 +137,7 @@ services:
       # SSR del dashboard v0.1: el API dentro de la red docker se resuelve por nombre de servicio.
       # SPSAAS_DASHBOARD_TOKEN es un JWT de servicio (ver web/README.md) y no tiene default por ser secreto.
       SPSAAS_API_URL: http://api:8000
+      SPSAAS_DASHBOARD_TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMzlkNzEyYy05ZmNlLTRkZTQtYmYzMi01OTViMWRkYmZiZjIiLCJ0ZW5hbnRfaWQiOiIyY2FmNTY3Ny1iNjNlLTRkM2ItYWE1MS1lZDc1N2Q4NzQwYWEiLCJyb2xlIjoib3duZXIiLCJpc19zdXBlcnVzZXIiOnRydWUsInR5cGUiOiJhY2Nlc3MiLCJleHAiOjE3OTEwMjc2MzYsImlhdCI6MTc5MDk4NDQzNn0.jzUnSPb3n7InjOD6uzbSRfcXXVrY9k231u_9-OTzpp8
     ports:
       - "3000:3000"
     depends_on:

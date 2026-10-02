@@ -2,4 +2,5 @@ packages:
   - .
 allowBuilds:
   unrs-resolver: true
+  esbuild: true
 minimumReleaseAge: 0

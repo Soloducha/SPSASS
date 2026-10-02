@@ -113,6 +113,10 @@ jobs:
       - name: ESLint
         run: pnpm run lint
 
+      # Unit tests for validation logic, FormData parsing, and shared rules.
+      - name: Vitest
+        run: pnpm run test
+
       # `next build` runs the TypeScript compiler and fails on type errors.
       # This is the check docker-build cannot provide for the web.
       - name: Next build (includes TypeScript check)

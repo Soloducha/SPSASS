@@ -31,14 +31,24 @@ def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
         db_url = str(settings.DATABASE_URL)
-        # SQLite no soporta pool_size/max_overflow, usar StaticPool
         is_sqlite = db_url.startswith("sqlite")
+        is_memory = ":memory:" in db_url
         if is_sqlite:
-            _engine = create_async_engine(
-                db_url,
-                echo=settings.ENVIRONMENT == "development",
-                poolclass=StaticPool,
-            )
+            if is_memory:
+                _engine = create_async_engine(
+                    db_url,
+                    echo=settings.ENVIRONMENT == "development",
+                    poolclass=StaticPool,
+                )
+            else:
+                # Para SQLite en archivo, usar NullPool para que cada sesión tenga su propia conexión
+                # al mismo archivo de base de datos. StaticPool no funciona bien con async.
+                from sqlalchemy.pool import NullPool
+                _engine = create_async_engine(
+                    db_url,
+                    echo=settings.ENVIRONMENT == "development",
+                    poolclass=NullPool,
+                )
         else:
             _engine = create_async_engine(
                 db_url,

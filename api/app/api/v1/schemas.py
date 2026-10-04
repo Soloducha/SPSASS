@@ -537,16 +537,14 @@ class EntitiesIngestResponse(BaseModel):
 # Agent Commands Schemas (Auto-restart)
 # ──────────────────────────────────────────────
 
-from typing import Literal
-
-AgentCommandEntityType = Literal["service", "process"]
-AgentCommandStatus = Literal["pending", "running", "success", "failed"]
+from app.models.agent_command import AgentCommandEntityType as ModelAgentCommandEntityType
+from app.models.agent_command import AgentCommandStatus as ModelAgentCommandStatus
 
 
 class AgentCommandCreate(BaseModel):
     """Request para encolar un comando de restart."""
 
-    entity_type: AgentCommandEntityType
+    entity_type: ModelAgentCommandEntityType
     entity_name: str = Field(min_length=1, max_length=255)
     command: str | None = Field(default=None, max_length=500)  # override opcional
 
@@ -560,7 +558,7 @@ class AgentCommandResponse(BaseModel):
     entity_type: str
     entity_name: str
     command: str | None
-    status: str
+    status: ModelAgentCommandStatus
     attempts: int
     max_attempts: int
     backoff_s: int
@@ -600,6 +598,6 @@ class AgentCommandPendingResponse(BaseModel):
 class AgentCommandResultRequest(BaseModel):
     """Request para reportar resultado de comando (agente)."""
 
-    status: AgentCommandStatus
+    status: ModelAgentCommandStatus
     exit_code: int | None = None
     output_tail: str | None = None

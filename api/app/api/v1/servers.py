@@ -267,30 +267,33 @@ async def report_command_result(
 
     Requiere API key. Actualiza status, exit_code, output_tail, finished_at.
     """
+    from app.core.logging import get_logger
+    logger = get_logger(__name__)
+    
     tenant, _ = auth
+    logger.info("DEBUG PATCH: command_id=%s, tenant_id=%s, status=%s", command_id, tenant.id, data.status.value)
+    
     cmd_repo = AgentCommandRepository(session)
 
-    # Validar y convertir status a model enum
-    if data.status not in ("pending", "running", "success", "failed"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"status inválido: {data.status}. Permitidos: pending, running, success, failed",
-        )
-    status_enum = AgentCommandStatus(data.status)
+    # data.status ya es AgentCommandStatus enum (validado por Pydantic)
+    status_enum = data.status
 
     command = await cmd_repo.set_result(
         command_id,
+        tenant.id,
         status=status_enum,
         exit_code=data.exit_code,
         output_tail=data.output_tail,
     )
+    logger.info("DEBUG PATCH: set_result returned command_found=%s", command is not None)
     if not command:
+        logger.warning("DEBUG PATCH: command NOT FOUND for command_id=%s, tenant_id=%s", command_id, tenant.id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Command no encontrado")
 
     logger.info(
         "agent_command_result",
         command_id=str(command_id),
-        status=data.status,
+        status=data.status.value,
         exit_code=data.exit_code,
     )
     return AgentCommandResponse.model_validate(command)

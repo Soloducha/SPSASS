@@ -349,3 +349,188 @@ func (t *testBackoff) Duration(attempt int) time.Duration {
 	}
 	return t.delays[len(t.delays)-1]
 }
+
+func TestSender_GetPendingCommands_SendsCorrectRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %s, want GET", r.Method)
+		}
+		if r.Header.Get("X-Api-Key") != "test-key" {
+			t.Errorf("X-Api-Key = %s, want test-key", r.Header.Get("X-Api-Key"))
+		}
+		// Verify path includes serverID
+		if r.URL.Path != "/api/v1/servers/test-server-id/commands" {
+			t.Errorf("path = %s, want /api/v1/servers/test-server-id/commands", r.URL.Path)
+		}
+
+		// Return mock commands
+		commands := []AgentCommand{
+			{ID: "cmd-1", EntityType: "service", EntityName: "nginx", Command: "systemctl restart nginx", MaxAttempts: 3, BackoffSeconds: 60},
+			{ID: "cmd-2", EntityType: "process", EntityName: "redis", Command: "systemctl restart redis", MaxAttempts: 3, BackoffSeconds: 60},
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(commands)
+	}))
+	defer server.Close()
+
+	logger := testLogger()
+	s := NewSender(server.URL, "test-key", logger)
+
+	commands, err := s.GetPendingCommands(context.Background(), "test-server-id")
+	if err != nil {
+		t.Fatalf("GetPendingCommands() error: %v", err)
+	}
+
+	if len(commands) != 2 {
+		t.Errorf("got %d commands, want 2", len(commands))
+	}
+	if commands[0].ID != "cmd-1" || commands[0].EntityType != "service" || commands[0].EntityName != "nginx" {
+		t.Errorf("command[0] = %+v, want id=cmd-1, type=service, name=nginx", commands[0])
+	}
+	if commands[1].ID != "cmd-2" || commands[1].EntityType != "process" || commands[1].EntityName != "redis" {
+		t.Errorf("command[1] = %+v, want id=cmd-2, type=process, name=redis", commands[1])
+	}
+}
+
+func TestSender_GetPendingCommands_RetriesOnFailure(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]AgentCommand{{ID: "cmd-1", EntityType: "service", EntityName: "nginx"}})
+	}))
+	defer server.Close()
+
+	logger := testLogger()
+	s := NewSender(server.URL, "test-key", logger)
+	s.SetBackoff(&testBackoff{delays: []time.Duration{10 * time.Millisecond, 10 * time.Millisecond}})
+
+	commands, err := s.GetPendingCommands(context.Background(), "test-server-id")
+	if err != nil {
+		t.Fatalf("GetPendingCommands() error: %v", err)
+	}
+	if len(commands) != 1 {
+		t.Errorf("got %d commands, want 1", len(commands))
+	}
+	if attempts != 2 {
+		t.Errorf("attempts = %d, want 2", attempts)
+	}
+}
+
+func TestSender_GetPendingCommands_EmptyList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]AgentCommand{})
+	}))
+	defer server.Close()
+
+	logger := testLogger()
+	s := NewSender(server.URL, "test-key", logger)
+
+	commands, err := s.GetPendingCommands(context.Background(), "test-server-id")
+	if err != nil {
+		t.Fatalf("GetPendingCommands() error: %v", err)
+	}
+	if len(commands) != 0 {
+		t.Errorf("got %d commands, want 0", len(commands))
+	}
+}
+
+func TestSender_ReportCommandResult_Success(t *testing.T) {
+	var receivedResult AgentCommandResult
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("method = %s, want PATCH", r.Method)
+		}
+		if r.Header.Get("X-Api-Key") != "test-key" {
+			t.Errorf("X-Api-Key = %s, want test-key", r.Header.Get("X-Api-Key"))
+		}
+		if r.URL.Path != "/api/v1/agent-commands/cmd-123/result" {
+			t.Errorf("path = %s, want /api/v1/agent-commands/cmd-123/result", r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&receivedResult)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	logger := testLogger()
+	s := NewSender(server.URL, "test-key", logger)
+
+	result := AgentCommandResult{
+		Status:     "success",
+		ExitCode:   0,
+		OutputTail: "service restarted successfully",
+	}
+	err := s.ReportCommandResult(context.Background(), "cmd-123", result)
+	if err != nil {
+		t.Fatalf("ReportCommandResult() error: %v", err)
+	}
+
+	if receivedResult.Status != "success" {
+		t.Errorf("received status = %q, want success", receivedResult.Status)
+	}
+	if receivedResult.ExitCode != 0 {
+		t.Errorf("received exit_code = %d, want 0", receivedResult.ExitCode)
+	}
+	if receivedResult.OutputTail != "service restarted successfully" {
+		t.Errorf("received output_tail = %q, want %q", receivedResult.OutputTail, "service restarted successfully")
+	}
+}
+
+func TestSender_ReportCommandResult_Failed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var result AgentCommandResult
+		json.NewDecoder(r.Body).Decode(&result)
+		if result.Status != "failed" {
+			t.Errorf("status = %q, want failed", result.Status)
+		}
+		if result.ExitCode != 1 {
+			t.Errorf("exit_code = %d, want 1", result.ExitCode)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	logger := testLogger()
+	s := NewSender(server.URL, "test-key", logger)
+
+	result := AgentCommandResult{
+		Status:     "failed",
+		ExitCode:   1,
+		OutputTail: "service not found",
+	}
+	err := s.ReportCommandResult(context.Background(), "cmd-456", result)
+	if err != nil {
+		t.Fatalf("ReportCommandResult() error: %v", err)
+	}
+}
+
+func TestSender_ReportCommandResult_RetriesOnFailure(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	logger := testLogger()
+	s := NewSender(server.URL, "test-key", logger)
+	s.SetBackoff(&testBackoff{delays: []time.Duration{10 * time.Millisecond, 10 * time.Millisecond}})
+
+	result := AgentCommandResult{Status: "success", ExitCode: 0}
+	err := s.ReportCommandResult(context.Background(), "cmd-789", result)
+	if err != nil {
+		t.Fatalf("ReportCommandResult() error: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("attempts = %d, want 2", attempts)
+	}
+}

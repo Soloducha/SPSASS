@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -256,5 +257,41 @@ func TestCollectorError_Error(t *testing.T) {
 	err := &collectorError{msg: "custom error"}
 	if err.Error() != "custom error" {
 		t.Errorf("collectorError.Error() = %q, want %q", err.Error(), "custom error")
+	}
+}
+
+// TestDefaultExecutor_CustomCommand tests the real default executor with a custom command.
+// This covers the customCommand branch (line 34-36) in ExecuteRestart.
+// Note: On some Windows systems (with Git Bash), sh -c IS available, so test both cases.
+func TestDefaultExecutor_CustomCommand(t *testing.T) {
+	// Use the real default executor
+	originalExecutor := defaultExecutor
+	defer SetCommandExecutor(originalExecutor)
+	SetCommandExecutor(&defaultCommandExecutor{})
+
+	// Test with a custom command - on Windows with Git Bash, sh -c works
+	// On Windows without Git Bash, it would fail with exitCode -1
+	// We just verify the customCommand branch is exercised
+	exitCode, output, err := ExecuteRestart(context.Background(), "service", "test", "echo hello")
+
+	if runtime.GOOS == "windows" {
+		// On Windows, could go either way depending on environment
+		// If sh is available (Git Bash), it succeeds; if not, it fails
+		// Either way, the branch is covered
+		t.Logf("Windows result: exitCode=%d, err=%v, output=%q", exitCode, err, output)
+		if exitCode != 0 && exitCode != -1 {
+			t.Errorf("unexpected exitCode on Windows: %d", exitCode)
+		}
+	} else {
+		// On Linux/macOS, sh -c should work
+		if err != nil {
+			t.Fatalf("ExecuteRestart() error: %v", err)
+		}
+		if exitCode != 0 {
+			t.Errorf("exitCode = %d, want 0", exitCode)
+		}
+		if !strings.Contains(output, "hello") {
+			t.Errorf("output = %q, expected to contain 'hello'", output)
+		}
 	}
 }

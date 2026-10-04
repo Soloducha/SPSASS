@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -418,5 +419,80 @@ func TestSystemdServiceLister_EmptyOutput(t *testing.T) {
 	}
 	if len(svcs) != 0 {
 		t.Errorf("len(svcs) = %d, want 0", len(svcs))
+	}
+}
+
+// TestSystemdServiceLister_ListServices_OnAnyOS tests the ListServices logic
+// with a mock runner. This test runs only on Linux where systemctl is available.
+func TestSystemdServiceLister_ListServices_OnLinux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Test requires Linux to test systemdServiceLister with mock runner")
+	}
+
+	sampleOutput := `nginx.service          loaded active running   A high performance web server
+ssh.service            loaded active running   OpenBSD Secure Shell server
+redis.service          loaded inactive dead    Redis server
+postgresql.service     loaded failed failed    PostgreSQL database
+docker.service         loaded deactivating stop-sigterm Docker container`
+
+	lister := &systemdServiceLister{
+		cmdRunner: func(name string, args ...string) ([]byte, error) {
+			return []byte(sampleOutput), nil
+		},
+	}
+
+	svcs, err := lister.ListServices()
+	if err != nil {
+		t.Fatalf("ListServices() error: %v", err)
+	}
+
+	if len(svcs) != 5 {
+		t.Fatalf("len(svcs) = %d, want 5", len(svcs))
+	}
+
+	expected := []ServiceInfo{
+		{Name: "nginx", State: "running"},
+		{Name: "ssh", State: "running"},
+		{Name: "redis", State: "stopped"},
+		{Name: "postgresql", State: "failed"},
+		{Name: "docker", State: "unknown"},
+	}
+
+	for i, exp := range expected {
+		if svcs[i].Name != exp.Name {
+			t.Errorf("svcs[%d].Name = %q, want %q", i, svcs[i].Name, exp.Name)
+		}
+		if svcs[i].State != exp.State {
+			t.Errorf("svcs[%d].State = %q, want %q", i, svcs[i].State, exp.State)
+		}
+	}
+}
+
+// TestDefaultCmdRunner tests the defaultCmdRunner function directly.
+// This covers line 82-89 in gopsutil_entities.go which is otherwise untested.
+func TestDefaultCmdRunner(t *testing.T) {
+	// Test with a command that exists on all platforms
+	var output []byte
+	var err error
+
+	if runtime.GOOS == "windows" {
+		output, err = defaultCmdRunner("cmd", "/c", "echo hello")
+	} else {
+		output, err = defaultCmdRunner("echo", "hello")
+	}
+
+	if err != nil {
+		t.Fatalf("defaultCmdRunner error: %v", err)
+	}
+
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "hello") {
+		t.Errorf("output = %q, expected to contain 'hello'", outputStr)
+	}
+
+	// Test error case - command that doesn't exist
+	_, err = defaultCmdRunner("this-command-definitely-does-not-exist-12345")
+	if err == nil {
+		t.Error("expected error for non-existent command, got nil")
 	}
 }

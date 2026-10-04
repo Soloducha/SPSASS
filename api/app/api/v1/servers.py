@@ -271,7 +271,6 @@ async def report_command_result(
     logger = get_logger(__name__)
     
     tenant, _ = auth
-    logger.info("DEBUG PATCH: command_id=%s, tenant_id=%s, status=%s", command_id, tenant.id, data.status.value)
     
     cmd_repo = AgentCommandRepository(session)
 
@@ -285,9 +284,8 @@ async def report_command_result(
         exit_code=data.exit_code,
         output_tail=data.output_tail,
     )
-    logger.info("DEBUG PATCH: set_result returned command_found=%s", command is not None)
     if not command:
-        logger.warning("DEBUG PATCH: command NOT FOUND for command_id=%s, tenant_id=%s", command_id, tenant.id)
+        logger.warning("Command not found for command_id=%s, tenant_id=%s", command_id, tenant.id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Command no encontrado")
 
     logger.info(

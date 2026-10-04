@@ -215,6 +215,7 @@ class TestAutoRestartAPI:
         )
         db_session.add(command)
         await db_session.flush()
+        await db_session.commit()
         command_id = command.id
 
         # Listar comandos pendientes
@@ -257,11 +258,12 @@ class TestAutoRestartAPI:
         )
         db_session.add(command)
         await db_session.flush()
+        await db_session.commit()
         command_id = command.id
 
         # Reportar resultado success
         report_resp = await client.patch(
-            f"/api/v1/agent-commands/{command_id}/result",
+            f"/api/v1/servers/agent-commands/{command_id}/result",
             json={"status": "success", "exit_code": 0, "output_tail": "nginx restarted successfully"},
             headers={"X-Api-Key": api_key},
         )
@@ -299,11 +301,12 @@ class TestAutoRestartAPI:
         )
         db_session.add(command)
         await db_session.flush()
+        await db_session.commit()
         command_id = command.id
 
         # Reportar fallo
         report_resp = await client.patch(
-            f"/api/v1/agent-commands/{command_id}/result",
+            f"/api/v1/servers/agent-commands/{command_id}/result",
             json={"status": "failed", "exit_code": 1, "output_tail": "process not found"},
             headers={"X-Api-Key": api_key},
         )
@@ -513,7 +516,7 @@ class TestWorkerAutoRestart:
         )
         assert cmd is None
 
-async def test_idempotency_no_duplicate_commands(self, db_session: AsyncSession) -> None:
+async def test_idempotency_no_duplicate_commands(db_session: AsyncSession) -> None:
         """Si ya hay comando PENDING/RUNNING, no se encola otro."""
         tenant, server = await _seed_tenant_server(db_session)
 
@@ -523,6 +526,7 @@ async def test_idempotency_no_duplicate_commands(self, db_session: AsyncSession)
 
         # Pre-crear comando PENDING
         from datetime import UTC, datetime
+        from app.models.agent_command import AgentCommandEntityType
         existing_cmd = AgentCommand(
             tenant_id=tenant.id,
             server_id=server.id,
@@ -533,6 +537,7 @@ async def test_idempotency_no_duplicate_commands(self, db_session: AsyncSession)
         )
         db_session.add(existing_cmd)
         await db_session.flush()
+        await db_session.commit()
 
         rule = AlertRule(
             tenant_id=tenant.id,

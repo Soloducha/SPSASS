@@ -59,9 +59,6 @@ class AgentCommandRepository(TenantScopedRepository):
         finished_at: datetime | None = None,
     ) -> AgentCommand | None:
         """Actualiza el resultado de un comando."""
-        from app.core.logging import get_logger
-        logger = get_logger(__name__)
-        
         if finished_at is None:
             finished_at = datetime.now(UTC)
         update_data: dict[str, Any] = {
@@ -74,8 +71,6 @@ class AgentCommandRepository(TenantScopedRepository):
         if output_tail is not None:
             update_data["output_tail"] = output_tail
 
-        logger.debug("set_result called", command_id=str(command_id), tenant_id=str(tenant_id), status=status.value)
-
         stmt = (
             update(AgentCommand)
             .where(AgentCommand.id == command_id)
@@ -83,14 +78,11 @@ class AgentCommandRepository(TenantScopedRepository):
             .values(**update_data)
         )
         result = await self.session.execute(stmt)
-        logger.debug("set_result update rowcount", rowcount=result.rowcount)
         if result.rowcount == 0:
-            logger.warning("set_result no row matched", command_id=str(command_id), tenant_id=str(tenant_id))
             return None
 
         # Fetch the updated command (RETURNING not reliable on SQLite)
         cmd = await self.get(command_id)
-        logger.debug("set_result get result", found=cmd is not None)
         return cmd
 
     async def has_pending_for_entity(

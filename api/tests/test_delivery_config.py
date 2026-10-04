@@ -17,8 +17,13 @@ from pydantic import ValidationError
 class TestSMTPDefaults:
     """Tests for SMTP settings defaults and env override."""
 
-    def test_defaults_disable_email(self) -> None:
+    def test_defaults_disable_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default settings leave smtp_enabled == False."""
+        # Override .env string values with empty strings (int/bool keep defaults)
+        for var in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"):
+            monkeypatch.setenv(var, "")
+        get_settings.cache_clear()
+
         settings = Settings()
         assert settings.SMTP_HOST == ""
         assert settings.SMTP_PORT == 587
@@ -51,25 +56,29 @@ class TestSMTPDefaults:
 
     def test_smtp_enabled_requires_both_host_and_from(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """smtp_enabled is True only when both HOST and FROM are set."""
+        # Start clean - override .env string values
+        for var in ("SMTP_HOST", "SMTP_FROM"):
+            monkeypatch.setenv(var, "")
         get_settings.cache_clear()
 
         # Only host
         monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
-        monkeypatch.delenv("SMTP_FROM", raising=False)
+        monkeypatch.setenv("SMTP_FROM", "")
+        get_settings.cache_clear()
         settings = Settings()
         assert settings.smtp_enabled is False
 
         # Only from
-        get_settings.cache_clear()
-        monkeypatch.delenv("SMTP_HOST", raising=False)
+        monkeypatch.setenv("SMTP_HOST", "")
         monkeypatch.setenv("SMTP_FROM", "alerts@example.com")
+        get_settings.cache_clear()
         settings = Settings()
         assert settings.smtp_enabled is False
 
         # Both set
-        get_settings.cache_clear()
         monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
         monkeypatch.setenv("SMTP_FROM", "alerts@example.com")
+        get_settings.cache_clear()
         settings = Settings()
         assert settings.smtp_enabled is True
 

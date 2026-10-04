@@ -6,7 +6,9 @@ Agente de monitoreo liviano en Go (binario estático) que recolecta métricas de
 
 **Mes 2 — Entregado:** agente v1 funcional — recolección (CPU, memoria, disco, load average), registro automático del servidor, heartbeat periódico, push HTTPS con retry/backoff y logging estructurado.
 
-**Pendiente (meses 3-4):** monitoreo de servicios (systemd), procesos y auto-restart local; jobs cron/batch.
+**Auto-restart (Mes 4 — Parcial):** infraestructura de comandos (API + agente) entregada. Agente expone `GetPendingCommands` + `ReportCommandResult` para ejecutar restart remoto de servicios/procesos. Ver `agent/internal/collector/commands.go` y `agent/internal/sender/sender.go`.
+
+**Pendiente:** monitoreo de servicios (systemd), procesos y auto-restart local; jobs cron/batch.
 
 ## Uso
 
@@ -48,6 +50,8 @@ La API key se crea desde un usuario admin del tenant vía `POST /auth/api-keys` 
 | `/api/v1/servers/register` | POST | `X-Api-Key` |
 | `/api/v1/servers/{id}/heartbeat` | POST | `X-Api-Key` |
 | `/api/v1/ingest/metrics` | POST | `X-Api-Key` |
+| `/api/v1/servers/{id}/commands` | GET | `X-Api-Key` — listar comandos pendientes |
+| `/api/v1/agent-commands/{id}/result` | PATCH | `X-Api-Key` — reportar resultado (agente) |
 
 ## Tests y checks
 
@@ -55,6 +59,13 @@ La API key se crea desde un usuario admin del tenant vía `POST /auth/api-keys` 
 go vet ./...
 go test ./...
 ```
+
+**Cobertura (2026-10-04):**
+| Paquete | Cobertura | Tests |
+|---------|-----------|-------|
+| `internal/collector` | 83% | `Collect`, `ExecuteRestart` (customCommand, Windows/Linux), `ListServices` (Linux mock), `defaultCmdRunner` |
+| `internal/config` | 96.5% | `LoadWithFlags`, `Validate`, `Load()` delegation, `configError.Error()` |
+| `internal/sender` | 84.7% | `Register`, `Heartbeat`, `SendMetrics`, `SendEntities`, `GetPendingCommands`, `ReportCommandResult`, backoff/retry |
 
 ## Limitaciones conocidas
 

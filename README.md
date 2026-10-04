@@ -79,6 +79,9 @@ docker compose down -v
 | `POST` | `/api/v1/servers/register` | API key (`X-Api-Key`) |
 | `POST` | `/api/v1/servers/{id}/heartbeat` | API key (`X-Api-Key`) |
 | `POST` | `/api/v1/ingest/metrics` | API key (`X-Api-Key`) — 202, batch ≤ 1000 |
+| `POST` | `/api/v1/servers/{id}/restart` | JWT — encolar auto-restart servicio/proceso |
+| `GET` | `/api/v1/servers/{id}/commands` | API key — listar comandos pendientes |
+| `PATCH` | `/api/v1/agent-commands/{id}/result` | API key — reportar resultado (agente) |
 | `GET` | `/api/v1/dashboard/overview` | JWT — estado agregado y métricas recientes |
 | `GET`/`POST` | `/api/v1/alerts/rules` | JWT — reglas de alerta (CRUD) |
 | `PATCH`/`DELETE` | `/api/v1/alerts/rules/{rule_id}` | JWT — editar / eliminar regla |
@@ -210,8 +213,9 @@ pnpm run lint
 pnpm run build
 ```
 
-Baseline API: **120 passed, 1 skipped, 1 xfailed, 2 xpassed pre-existentes** (no tocar) — verificado 2026-09-28.
+Baseline API: **267 passed, 1 skipped, 1 xfailed, 2 xpassed** — verificado 2026-10-04.
 Web: **95 tests Vitest pass**, lint clean, build ok — verificado 2026-10-02 (PR #30).
+Agente Go: **collector 83%, config 96.5%, sender 84.7%** — verificado 2026-10-04.
 
 ---
 
@@ -252,7 +256,7 @@ Ver `propuesta.md` sección 4 y 10 para detalles de escalado.
 | **1** | Fundaciones | Repo, CI/CD, Docker, auth, multi-tenant, modelos, bootstrap admin | ✅ Entregado |
 | **2** | Agente + ingesta | Agente Go v1, heartbeat, API ingesta, rollups, dashboard v0.1 | ✅ Entregado |
 | **3** | Alertas | Alert Engine, reglas, dedupe, entrega Webhook + Email (SMTP) + Telegram | ✅ Entregado (canales v1: webhook + email + telegram; WhatsApp ⏳) |
-| **4** | Procesos + jobs | Servicios/procesos, job monitor, auto-restart, WhatsApp | ⏳ Pendiente |
+| **4** | Procesos + jobs | Servicios/procesos, job monitor, **auto-restart (entregado)**, WhatsApp | ⏳ Parcial |
 | **5** | Reportes | Disponibilidad, incidentes, SLA, métricas históricas | ⏳ Pendiente |
 | **6** | Pulido + beta | Onboarding, invitaciones, plan gates, beta cerrada 3-5 pilotos | ⏳ Pendiente |
 

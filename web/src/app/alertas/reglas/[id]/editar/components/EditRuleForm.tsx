@@ -88,8 +88,6 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
       setDuration_s(value);
     } else if (name === 'severity') {
       setSeverity(value as 'info' | 'warning' | 'critical');
-    } else if (name === 'is_active') {
-      setIsActive(value === 'true');
     } else if (name === 'email_to') {
       setEmailTo(value);
     } else if (name === 'webhook_url') {
@@ -100,8 +98,6 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
       setTelegramChatId(value);
     } else if (name === 'telegram_thread_id') {
       setTelegramThreadId(value);
-    } else if (name === 'telegram_silent') {
-      setTelegramSilent(value === 'true');
     }
 
     // Validate on change
@@ -438,7 +434,7 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
                 id="is_active"
                 name="is_active"
                 checked={isActive}
-                onChange={e => { setIsActive(e.target.checked); handleChange(e); }}
+                onChange={e => setIsActive(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 focus:ring-2"
               />
               <label htmlFor="is_active" className="text-sm font-medium text-gray-700 cursor-pointer">
@@ -590,7 +586,7 @@ export function EditRuleForm({ rule, servers }: EditRuleFormProps) {
                 id="telegram_silent"
                 name="telegram_silent"
                 checked={telegramSilent}
-                onChange={e => { setTelegramSilent(e.target.checked); handleChange(e); }}
+                onChange={e => setTelegramSilent(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 focus:ring-2"
               />
               <label htmlFor="telegram_silent" className="text-sm font-medium text-gray-700 cursor-pointer">

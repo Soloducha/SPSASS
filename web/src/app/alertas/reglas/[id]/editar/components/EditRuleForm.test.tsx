@@ -416,6 +416,23 @@ describe('EditRuleForm', () => {
     expect(formData.get('is_active')).toBe('false');
   });
 
-  // TEMPORARILY REMOVED FOR COMMIT 1 - RESTORED IN COMMIT 2
-  // it('activates an inactive rule when the checkbox is clicked', ...)
+  it('activates an inactive rule when the checkbox is clicked', async () => {
+    const user = userEvent.setup();
+    const inactiveRule: AlertRuleResponse = { ...mockRule, is_active: false };
+    const props = { ...defaultProps, rule: inactiveRule };
+    render(<EditRuleForm {...props} />);
+
+    const isActiveCheckbox = screen.getByRole('checkbox', { name: 'Regla activa' });
+    expect(isActiveCheckbox).not.toBeChecked();
+
+    await user.click(isActiveCheckbox);
+    expect(isActiveCheckbox).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'Actualizar regla' }));
+
+    expect(await screen.findByText('Regla actualizada correctamente')).toBeInTheDocument();
+
+    const formData = updateAlertRuleMock.mock.calls[0][1];
+    expect(formData.get('is_active')).toBe('true');
+  });
 });

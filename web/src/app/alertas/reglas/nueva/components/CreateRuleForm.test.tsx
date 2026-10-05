@@ -359,9 +359,66 @@ describe('CreateRuleForm', () => {
     expect(formData.get('telegram_thread_id')).toBe('42');
   });
 
-  // TEMPORARILY REMOVED FOR COMMIT 1 - RESTORED IN COMMIT 2
-  // it('includes telegram silent when checked', ...)
-  // it('re-checks an active rule after it has been unchecked', ...)
+  // REGRESSION COVERAGE for a fixed component bug.
+  //
+  // CreateRuleForm.tsx used to wire this checkbox as
+  //   onChange={e => { setTelegramSilent(e.target.checked); handleChange(e); }}
+  // and handleChange then did
+  //   else if (name === 'telegram_silent') setTelegramSilent(value === 'true')
+  // where `value` is `e.target.value`. The input declares no `value` attribute,
+  // so a checkbox always reports value 'on', never 'true'. handleChange
+  // therefore overwrote the correct `e.target.checked` with `false` in the same
+  // event, the checkbox never stayed ticked, and the `telegram_silent` FormData
+  // entry (appended only when telegramSilent is true) was never sent.
+  //
+  // The fix drops the redundant handleChange call from the checkbox and removes
+  // the now-unreachable `telegram_silent` / `is_active` branches from
+  // handleChange, so only `e.target.checked` drives these two checkboxes.
+  it('includes telegram silent when checked', async () => {
+    const user = userEvent.setup();
+    render(<CreateRuleForm {...defaultProps} />);
+
+    await user.type(screen.getByLabelText(/^Métrica/), 'cpu_usage');
+    await user.type(screen.getByLabelText(/^Umbral/), '80.5');
+    await user.type(screen.getByLabelText(/^Telegram - Chat ID/), '-1001234567890');
+    // Toggle the checkbox control directly rather than its <label>, so the
+    // assertion does not depend on jsdom's label-activation forwarding.
+    await user.click(screen.getByRole('checkbox', { name: /Enviar sin notificación/ }));
+
+    await user.click(screen.getByRole('button', { name: 'Crear regla' }));
+
+    expect(await screen.findByText('Regla creada correctamente')).toBeInTheDocument();
+
+    const formData = createAlertRuleMock.mock.calls[0][1];
+    expect(formData.get('telegram_silent')).toBe('true');
+  });
+
+  it('re-checks an active rule after it has been unchecked', async () => {
+    const user = userEvent.setup();
+    render(<CreateRuleForm {...defaultProps} />);
+
+    await user.type(screen.getByLabelText(/^Métrica/), 'cpu_usage');
+    await user.type(screen.getByLabelText(/^Umbral/), '80.5');
+    await user.type(screen.getByLabelText(/^Email - Destinatarios/), 'ops@example.com');
+
+    // `is_active` defaults to checked. Toggling it off then on again must end up
+    // checked, and that state must reach the submitted FormData.
+    const isActiveCheckbox = screen.getByRole('checkbox', { name: 'Regla activa' });
+    expect(isActiveCheckbox).toBeChecked();
+
+    await user.click(isActiveCheckbox);
+    expect(isActiveCheckbox).not.toBeChecked();
+
+    await user.click(isActiveCheckbox);
+    expect(isActiveCheckbox).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'Crear regla' }));
+
+    expect(await screen.findByText('Regla creada correctamente')).toBeInTheDocument();
+
+    const formData = createAlertRuleMock.mock.calls[0][1];
+    expect(formData.get('is_active')).toBe('true');
+  });
 
   it('includes webhook headers when provided', async () => {
     const user = userEvent.setup();

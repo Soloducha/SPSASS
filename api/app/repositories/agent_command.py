@@ -1,7 +1,7 @@
 """Repositorio para AgentCommand con scoping de tenant."""
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypedDict, Unpack
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -9,6 +9,13 @@ from sqlalchemy.orm import InstrumentedAttribute
 
 from app.models.agent_command import AgentCommand, AgentCommandStatus
 from app.repositories.base import TenantScopedRepository
+
+
+class SetResultParams(TypedDict, total=False):
+    """Parámetros opcionales para actualizar el resultado de un comando."""
+    exit_code: int | None
+    output_tail: str | None
+    finished_at: datetime | None
 
 
 class AgentCommandRepository(TenantScopedRepository):
@@ -54,21 +61,18 @@ class AgentCommandRepository(TenantScopedRepository):
         tenant_id: UUID,
         *,
         status: AgentCommandStatus,
-        exit_code: int | None = None,
-        output_tail: str | None = None,
-        finished_at: datetime | None = None,
+        **kwargs: Unpack[SetResultParams],
     ) -> AgentCommand | None:
         """Actualiza el resultado de un comando."""
-        if finished_at is None:
-            finished_at = datetime.now(UTC)
+        finished_at = kwargs.get("finished_at") or datetime.now(UTC)
         update_data: dict[str, Any] = {
             "status": status,
             "finished_at": finished_at,
             "updated_at": datetime.now(UTC),
         }
-        if exit_code is not None:
+        if (exit_code := kwargs.get("exit_code")) is not None:
             update_data["exit_code"] = exit_code
-        if output_tail is not None:
+        if (output_tail := kwargs.get("output_tail")) is not None:
             update_data["output_tail"] = output_tail
 
         stmt = (
@@ -82,8 +86,7 @@ class AgentCommandRepository(TenantScopedRepository):
             return None
 
         # Fetch the updated command (RETURNING not reliable on SQLite)
-        cmd = await self.get(command_id)
-        return cmd
+        return await self.get(command_id)
 
     async def has_pending_for_entity(
         self, server_id: UUID, entity_type: str, entity_name: str

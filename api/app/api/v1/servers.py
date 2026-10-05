@@ -267,11 +267,10 @@ async def report_command_result(
 
     Requiere API key. Actualiza status, exit_code, output_tail, finished_at.
     """
-    from app.core.logging import get_logger
     logger = get_logger(__name__)
-    
+
     tenant, _ = auth
-    
+
     cmd_repo = AgentCommandRepository(session)
 
     # data.status ya es AgentCommandStatus enum (validado por Pydantic)

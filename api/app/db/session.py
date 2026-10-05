@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -43,7 +43,6 @@ def get_engine() -> AsyncEngine:
             else:
                 # Para SQLite en archivo, usar NullPool para que cada sesión tenga su propia conexión
                 # al mismo archivo de base de datos. StaticPool no funciona bien con async.
-                from sqlalchemy.pool import NullPool
                 _engine = create_async_engine(
                     db_url,
                     echo=settings.ENVIRONMENT == "development",

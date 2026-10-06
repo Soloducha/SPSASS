@@ -20,6 +20,7 @@ from app.models.metric_rollup import RollupPeriod
 from app.workers.alerts import evaluate_alerts
 from app.workers.delivery_runner import DeliveryRunSummary, deliver_alerts
 from app.workers.jobs import run_due_jobs
+from app.workers.reports import generate_pending_reports_row, run_scheduled_reports_row
 from app.workers.rollups import compute_rollups
 
 setup_logging()
@@ -88,6 +89,20 @@ async def run_due_jobs_row(ctx: dict[str, Any]) -> int:
         return await run_due_jobs(session)
 
 
+# ──────────────────────────────────────────────
+# Jobs de reportes
+# ──────────────────────────────────────────────
+
+async def generate_pending_reports_row_wrapper(ctx: dict[str, Any]) -> int:
+    """Procesa reports PENDING (corre cada minuto)."""
+    return await generate_pending_reports_row(ctx)
+
+
+async def run_scheduled_reports_row_wrapper(ctx: dict[str, Any]) -> int:
+    """Crea reports programados (corre diario a medianoche)."""
+    return await run_scheduled_reports_row(ctx)
+
+
 class WorkerSettings(WorkerSettingsBase):
     """Configuración de workers arq (convención: atributos → kwargs de Worker)."""
 
@@ -100,6 +115,8 @@ class WorkerSettings(WorkerSettingsBase):
         func(evaluate_alerts_row),
         func(deliver_alerts_row),
         func(run_due_jobs_row),
+        func(generate_pending_reports_row_wrapper),
+        func(run_scheduled_reports_row_wrapper),
     ]
     cron_jobs: list[CronJob] = [
         cron(rollup_min_1, name="rollup-1m", run_at_startup=False, unique=True),
@@ -109,6 +126,8 @@ class WorkerSettings(WorkerSettingsBase):
         cron(evaluate_alerts_row, name="alert-eval-1m", run_at_startup=False, unique=True),
         cron(deliver_alerts_row, name="alert-delivery-1m", run_at_startup=False, unique=True),
         cron(run_due_jobs_row, name="job-run-1m", run_at_startup=False, unique=True),
+        cron(generate_pending_reports_row_wrapper, name="report-gen-1m", run_at_startup=False, unique=True),
+        cron(run_scheduled_reports_row_wrapper, name="report-scheduled-1d", hour=0, minute=0, second=0, run_at_startup=False, unique=True),
     ]
     on_startup: StartupShutdown | None = on_startup
     on_shutdown: StartupShutdown | None = on_shutdown

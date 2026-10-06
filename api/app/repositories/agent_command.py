@@ -82,7 +82,7 @@ class AgentCommandRepository(TenantScopedRepository):
             .values(**update_data)
         )
         result = await self.session.execute(stmt)
-        if result.rowcount == 0:
+        if result.rowcount == 0:  # type: ignore[attr-defined]
             return None
 
         # Fetch the updated command (RETURNING not reliable on SQLite)

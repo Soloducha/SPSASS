@@ -24,6 +24,7 @@ class ReportStatus(enum.StrEnum):
     GENERATING = "generating"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class Report(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):

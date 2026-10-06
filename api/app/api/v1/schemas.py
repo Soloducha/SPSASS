@@ -17,6 +17,7 @@ from pydantic import (
 from app.models.alert import AlertOperator, AlertSeverity, AlertStatus, EntityType
 from app.models.job import JobKind, JobStatus
 from app.models.metric import MetricType
+from app.models.report import ReportStatus, ReportType
 from app.models.service import ServiceState
 
 
@@ -601,3 +602,58 @@ class AgentCommandResultRequest(BaseModel):
     status: ModelAgentCommandStatus
     exit_code: int | None = None
     output_tail: str | None = None
+
+
+# ──────────────────────────────────────────────
+# Report Schemas (T1 - Mes 5)
+# ──────────────────────────────────────────────
+class ReportBase(BaseModel):
+    """Campos comunes de reporte."""
+
+    type: ReportType
+    period_start: datetime
+    period_end: datetime
+    params: dict = Field(default_factory=dict)
+
+
+class ReportCreate(ReportBase):
+    """Request para crear un reporte manual (POST /reports)."""
+
+    pass
+
+
+class ReportGenerateRequest(ReportBase):
+    """Request para generar un reporte asíncrono (POST /reports/generate).
+
+    Igual que ReportCreate pero params es opcional para conveniencia.
+    """
+
+    params: dict = Field(default_factory=dict)
+
+
+class ReportResponse(BaseModel):
+    """Response de reporte (GET /reports/{id})."""
+
+    id: UUID
+    tenant_id: UUID
+    type: ReportType
+    status: ReportStatus
+    period_start: datetime
+    period_end: datetime
+    payload: dict
+    generated_at: datetime | None
+    file_path: str | None
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReportListResponse(BaseModel):
+    """Response paginado para listado de reportes (GET /reports)."""
+
+    items: list[ReportResponse]
+    total: int
+    page: int
+    page_size: int

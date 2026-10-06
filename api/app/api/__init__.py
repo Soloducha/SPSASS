@@ -6,6 +6,7 @@ from app.api.v1 import (
     ingest_router,
     jobs_router,
     processes_router,
+    reports_router,
     servers_router,
     services_router,
 )
@@ -20,4 +21,5 @@ __all__ = [
     "processes_router",
     "services_router",
     "jobs_router",
+    "reports_router",
 ]

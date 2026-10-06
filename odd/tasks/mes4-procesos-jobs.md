@@ -1,6 +1,6 @@
 # Feature — mes 4: Procesos + Servicios + Jobs v1 (monitorear + alertar + runner)
 
-> Feature document ODD. Estado: **EN IMPLEMENTACIÓN** — T1–T5 cerradas y verificadas (2026-09-28); T6 (E2E real) pendiente. El branch `feat/mes4-01-crud` acumula 5.964 líneas autoradas y **todavía no fue pusheado ni entregado**.
+> Feature document ODD. Estado: **DONE + MERGED** — PR #27 mergeado (2026-09-29, commit `36df44e`). T1–T6 completas y verificadas, E2E real contra stack Docker verificado en vivo. Branch `feat/mes4-01-crud` borrado tras squash merge.
 >
 > Referencia roadmap: `propuesta.md` línea 155 → **Mes 4 = Procesos + jobs**: servicios/procesos con auto-restart, job monitor cron/batch, detección de errores, canal WhatsApp.
 >
@@ -143,6 +143,18 @@ El Mes 3 probó que un job cron caído a las 3 AM nadie lo ve hasta la mañana (
 - **#3 — job sin `channels` configurados.** `jobs.py` crea la alerta de fallo **sin ninguna entrega** cuando `job.config.channels` está vacío. Es intencional (queda visible en API/UI para que el operador la vea), pero implica que un job sin canales configurados **no notifica a nadie**. Hueco de producto Known, no de código.
 
 **Verificación del fix #2**: `ruff check` limpio · `mypy app` limpio (60 archivos) · `pytest tests/test_delivery_runner.py` 15/15 · suite completa `196 passed, 2 failed` (los 2 fallos son SMTP ambiental, preexistentes; antes del fix eran 195 passed).
+
+---
+
+### Cierre RDD (2026-10-06)
+
+La review nativa de los work-units de T6 (`review-a599a233c2299a0a`) quedó en estado **escalated** (`native_stop_required`) con 6 hallazgos severos (`R3-AlertCreationConfigSnapshot`, `R3-DeliveryRunnerConfigResolution`, `R3-JobFailureAlertConfigSource`, `R4-1`, `R4-2`, `R4-4`). El squash merge + borrado del branch `feat/mes4-01-crud` perdió los lineages de review originales.
+
+- **Hallazgo #2 (`R3-DeliveryRunnerConfigResolution`)**: ✅ **FIXEADO** en el merge (aislamiento de deliveries no resolubles).
+- **Hallazgos #1 y #3**: **Decisiones de producto** documentadas arriba — sin cambio de código.
+- **Hallazgos `R4-1`, `R4-2`, `R4-4`**: **No recuperables** (lineages perdidos en el squash merge). Solo IDs disponibles.
+
+**Resultado**: feature entregada, mergeada, verificada en E2E real. Los hallazgos de producto son conocidos y aceptados. No hay acción pendiente.
 
 ## Rutas por task
 

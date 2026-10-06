@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 
 import { getDashboardToken, getSpsaasApiUrl } from '@/lib/config';
+import { MetricsHistoryChart } from '@/components/MetricsHistoryChart';
 
 // SSR en vivo: el dashboard siempre se genera por request con el token de
 // runtime; nunca se prerenderiza en build time.
@@ -201,6 +202,12 @@ export default async function HomePage() {
     overview = { totals: { total: 0, online: 0, offline: 0, degraded: 0, unknown: 0 }, servers: [] };
   }
 
+  // Preparar opciones de servidores para el selector de métricas históricas
+  const serverOptions = overview.servers.map(s => ({
+    value: s.id,
+    label: s.hostname,
+  }));
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
       <header className="mb-8">
@@ -220,6 +227,10 @@ export default async function HomePage() {
           <section>
             <h2 className="mb-3 text-lg font-semibold text-gray-900">Servidores</h2>
             <ServerTable servers={overview.servers} />
+          </section>
+          <section>
+            <h2 className="mb-3 text-lg font-semibold text-gray-900">Métricas históricas</h2>
+            <MetricsHistoryChart servers={serverOptions} />
           </section>
         </div>
       )}

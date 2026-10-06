@@ -18,6 +18,7 @@ from app.core.logging import get_logger, setup_logging
 from app.db.session import get_db_session_without_tenant
 from app.models.metric_rollup import RollupPeriod
 from app.workers.alerts import evaluate_alerts
+from app.workers.deliver_reports import deliver_completed_reports_row
 from app.workers.delivery_runner import DeliveryRunSummary, deliver_alerts
 from app.workers.jobs import run_due_jobs
 from app.workers.reports import generate_pending_reports_row, run_scheduled_reports_row
@@ -103,6 +104,11 @@ async def run_scheduled_reports_row_wrapper(ctx: dict[str, Any]) -> int:
     return await run_scheduled_reports_row(ctx)
 
 
+async def deliver_completed_reports_row_wrapper(ctx: dict[str, Any]) -> int:
+    """Entrega reports COMPLETED pendientes (corre cada minuto)."""
+    return await deliver_completed_reports_row(ctx)
+
+
 class WorkerSettings(WorkerSettingsBase):
     """Configuración de workers arq (convención: atributos → kwargs de Worker)."""
 
@@ -117,6 +123,7 @@ class WorkerSettings(WorkerSettingsBase):
         func(run_due_jobs_row),
         func(generate_pending_reports_row_wrapper),
         func(run_scheduled_reports_row_wrapper),
+        func(deliver_completed_reports_row_wrapper),
     ]
     cron_jobs: list[CronJob] = [
         cron(rollup_min_1, name="rollup-1m", run_at_startup=False, unique=True),
@@ -128,6 +135,7 @@ class WorkerSettings(WorkerSettingsBase):
         cron(run_due_jobs_row, name="job-run-1m", run_at_startup=False, unique=True),
         cron(generate_pending_reports_row_wrapper, name="report-gen-1m", run_at_startup=False, unique=True),
         cron(run_scheduled_reports_row_wrapper, name="report-scheduled-1d", hour=0, minute=0, second=0, run_at_startup=False, unique=True),
+        cron(deliver_completed_reports_row_wrapper, name="report-delivery-1m", run_at_startup=False, unique=True),
     ]
     on_startup: StartupShutdown | None = on_startup
     on_shutdown: StartupShutdown | None = on_shutdown

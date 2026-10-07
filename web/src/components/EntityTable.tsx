@@ -1,7 +1,3 @@
-/** Generic table component for entity lists with pagination. */
-
-'use client';
-
 import { type ReactNode } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
@@ -41,6 +37,8 @@ export function Pagination({ currentPage, hasNext, onPrevious, onNext, isLoading
   );
 }
 
+export type BadgeVariant = 'default' | 'success' | 'warning' | 'error' | 'info';
+
 export type ColumnType =
   | 'text'
   | 'badge'
@@ -54,7 +52,7 @@ export interface ColumnConfig<T> {
   header: string;
   type?: ColumnType;
   /** For 'badge' type: maps value to variant */
-  badgeVariantMap?: Record<string, 'default' | 'success' | 'warning' | 'error' | 'info'>;
+  badgeVariantMap?: Record<string, BadgeVariant>;
   /** For 'link' type: base URL path */
   linkBasePath?: string;
   /** For 'date' type: locale string options */
@@ -78,13 +76,19 @@ export interface EntityTableProps<T> {
   rowKey: (item: T) => string;
   onRowClick?: (item: T) => void;
   actions?: (item: T) => ReactNode;
+  /** Mapa de renderizadores personalizados: key del customRenderer -> función (value, item) => ReactNode */
+  customRenderers?: Record<string, (value: unknown, item: T) => ReactNode>;
 }
 
-function renderCell<T>(item: T, col: ColumnConfig<T>): ReactNode {
+function renderCell<T>(item: T, col: ColumnConfig<T>, customRenderers?: Record<string, (value: unknown, item: T) => ReactNode>): ReactNode {
   const value = (item as Record<string, unknown>)[col.key];
 
   if (value === undefined || value === null) {
     return <span className="text-gray-400">—</span>;
+  }
+
+  if (col.type === 'custom' && col.customRenderer && customRenderers?.[col.customRenderer]) {
+    return customRenderers[col.customRenderer](value, item);
   }
 
   switch (col.type) {
@@ -124,9 +128,6 @@ function renderCell<T>(item: T, col: ColumnConfig<T>): ReactNode {
         </a>
       );
     }
-    case 'custom':
-      // Custom renderers are handled by the parent via a map
-      return String(value);
     default: {
       const str = String(value);
       if (col.truncate && str.length > col.truncate) {
@@ -147,6 +148,7 @@ export function EntityTable<T>({
   rowKey,
   onRowClick,
   actions,
+  customRenderers,
 }: EntityTableProps<T>) {
   if (isLoading) {
     return (
@@ -237,7 +239,7 @@ export function EntityTable<T>({
             >
               {columns.map((col) => (
                 <td key={col.key} className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${col.className || ''}`}>
-                  {renderCell(item, col)}
+                  {renderCell(item, col, customRenderers)}
                 </td>
               ))}
               {actions && (

@@ -142,6 +142,17 @@ class Settings(BaseSettings):
         """True only when a Telegram bot token is configured."""
         return bool(self.TELEGRAM_BOT_TOKEN)
 
+    # ──────────────────────────────────────────────
+    # Invitaciones
+    # ──────────────────────────────────────────────
+    WEB_URL: str = Field(
+        default="http://localhost:3000",
+        description="Base URL del frontend web, usado para los links de aceptacion de invitaciones",
+    )
+    INVITATION_EXPIRE_DAYS: int = Field(
+        default=7, ge=1, le=90, description="Validez del token de invitacion en dias"
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

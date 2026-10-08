@@ -134,6 +134,17 @@ Mes 6 cierra esa brecha: **de MVP técnico a producto vendible en beta cerrada**
   - **Checks:** mypy 0, ruff 0 errors, pytest 292 passed, lint 0 errors, build success, test 174 passed
   - **Pendiente:** Playwright E2E para el flujo completo
 
+- **2026-10-07** — T2 Invitaciones **COMPLETO** (salvo tests unit/E2E y migración Alembic).
+  - ✅ Modelo `TenantInvitation` con índice único parcial (`tenant_id`, `email` WHERE `accepted_at IS NULL`)
+  - ✅ Endpoints: `POST /api/v1/invitations` (create), `GET /api/v1/invitations` (list), `POST /api/v1/invitations/accept/{token}` (accept público)
+  - ✅ Email SMTP para invitaciones (`api/app/workers/delivery/invitation_email.py`)
+  - ✅ Config `WEB_URL` + `INVITATION_EXPIRE_DAYS` en `api/app/core/config.py`
+  - ✅ Frontend: API client (`web/src/lib/api/invitations.ts`), Server Actions (`web/src/app/invitations/actions.ts`), Accept page (`web/src/app/accept-invitation/[token]/page.tsx`)
+  - ✅ Router montado en FastAPI
+  - **Checks:** mypy 0, ruff 0 errors (solo warnings pre-existentes), pytest 292 passed, lint 0 errors, build OK, test 174 passed
+  - **Pendiente:** Tests unit/E2E, migración Alembic, UI para crear invitaciones en dashboard
+  - **Riesgos:** No hay migración Alembic (crear en follow-up), `clean_database` en conftest no limpia `tenant_invitations`, token de invitación en URL (logs/Referer), tokens de accept no se usan en sesión web
+
 ---
 
 ## Rutas por task

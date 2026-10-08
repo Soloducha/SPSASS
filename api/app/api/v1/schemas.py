@@ -14,11 +14,13 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.auth.schemas import TenantResponse, UserResponse
 from app.models.alert import AlertOperator, AlertSeverity, AlertStatus, EntityType
 from app.models.job import JobKind, JobStatus
 from app.models.metric import MetricType
 from app.models.report import ReportStatus, ReportType
 from app.models.service import ServiceState
+from app.models.tenant_member import MemberRole
 
 
 # ──────────────────────────────────────────────
@@ -657,3 +659,62 @@ class ReportListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ──────────────────────────────────────────────
+# Invitation Schemas (T2 - Mes 6)
+# ──────────────────────────────────────────────
+class InvitationCreateRequest(BaseModel):
+    """Request para invitar a un miembro al tenant del usuario autenticado."""
+
+    email: EmailStr
+    role: MemberRole = MemberRole.MEMBER
+
+
+class InvitationResponse(BaseModel):
+    """Invitacion recien creada.
+
+    Incluye `token` en claro a proposito: la API lo devuelve siempre para que
+    un admin pueda compartir el link a mano si el envio por email falla. Es el
+    unico momento en que el token viaja en la respuesta de listado/creacion.
+    """
+
+    id: UUID
+    email: EmailStr
+    role: MemberRole
+    token: str
+    expires_at: datetime
+    created_at: datetime
+    accepted_at: datetime | None
+
+
+class InvitationListResponse(BaseModel):
+    """Invitacion para listado (sin token)."""
+
+    id: UUID
+    email: EmailStr
+    role: MemberRole
+    expires_at: datetime
+    created_at: datetime
+    accepted_at: datetime | None
+
+
+class AcceptInvitationRequest(BaseModel):
+    """Request para aceptar una invitacion.
+
+    `password` se usa solo cuando el email todavia no tiene usuario: en ese
+    caso se crea la cuenta. Si el usuario ya existe, se ignora y la invitacion
+    solo agrega la membresia al tenant.
+    """
+
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str | None = Field(default=None, max_length=255)
+
+
+class AcceptInvitationResponse(BaseModel):
+    """Resultado de aceptar una invitacion: tokens + usuario + tenant invitado."""
+
+    access_token: str
+    refresh_token: str
+    user: UserResponse
+    tenant: TenantResponse

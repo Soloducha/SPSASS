@@ -4,6 +4,7 @@ from app.api.v1.alerts import router as alerts_router
 from app.api.v1.api_keys import router as api_keys_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.ingest import router as ingest_router
+from app.api.v1.invitations import router as invitations_router
 from app.api.v1.jobs import router as jobs_router
 from app.api.v1.processes import router as processes_router
 from app.api.v1.reports import router as reports_router
@@ -20,4 +21,5 @@ __all__ = [
     "services_router",
     "jobs_router",
     "reports_router",
+    "invitations_router",
 ]

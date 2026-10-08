@@ -16,6 +16,7 @@ from app.api import (
     auth_router,
     dashboard_router,
     ingest_router,
+    invitations_router,
     jobs_router,
     processes_router,
     reports_router,
@@ -175,6 +176,7 @@ app.include_router(services_router)
 app.include_router(jobs_router)
 app.include_router(reports_router)
 app.include_router(api_keys_router)
+app.include_router(invitations_router)
 
 
 if __name__ == "__main__":

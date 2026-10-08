@@ -19,6 +19,7 @@ from app.models.report import Report, ReportStatus, ReportType
 from app.models.server import Server, ServerStatus
 from app.models.service import Service, ServiceState
 from app.models.tenant import PlanType, Tenant
+from app.models.tenant_invitation import InvitationStatus, TenantInvitation
 from app.models.tenant_member import MemberRole, TenantMember
 from app.models.user import User, UserRole
 
@@ -37,6 +38,9 @@ __all__ = [
     # TenantMember
     "TenantMember",
     "MemberRole",
+    # TenantInvitation
+    "TenantInvitation",
+    "InvitationStatus",
     # ApiKey
     "ApiKey",
     # Server

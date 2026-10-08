@@ -5,6 +5,7 @@ from app.api.v1 import (
     api_keys_router,
     dashboard_router,
     ingest_router,
+    invitations_router,
     jobs_router,
     processes_router,
     reports_router,
@@ -24,4 +25,5 @@ __all__ = [
     "services_router",
     "jobs_router",
     "reports_router",
+    "invitations_router",
 ]

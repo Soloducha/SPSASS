@@ -12,11 +12,13 @@ from sqlalchemy import text
 
 from app.api import (
     alerts_router,
+    api_keys_router,
     auth_router,
     dashboard_router,
     ingest_router,
     jobs_router,
     processes_router,
+    reports_router,
     servers_router,
     services_router,
 )
@@ -171,6 +173,8 @@ app.include_router(alerts_router)
 app.include_router(processes_router)
 app.include_router(services_router)
 app.include_router(jobs_router)
+app.include_router(reports_router)
+app.include_router(api_keys_router)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 from app.api.v1 import (
     alerts_router,
+    api_keys_router,
     dashboard_router,
     ingest_router,
     jobs_router,
@@ -14,6 +15,7 @@ from app.core.auth.router import router as auth_router
 
 __all__ = [
     "auth_router",
+    "api_keys_router",
     "servers_router",
     "ingest_router",
     "dashboard_router",

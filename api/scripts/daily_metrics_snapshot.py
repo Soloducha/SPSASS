@@ -8,15 +8,20 @@ Uso:
     python scripts/daily_metrics_snapshot.py --backfill 7 # Últimos 7 días
 
 Opciones:
-    --sqlite    Usar SQLite en memoria (para desarrollo local sin PostgreSQL)
+    --sqlite    Usar SQLite en archivo (para desarrollo local sin PostgreSQL)
 
 Ejecutar via cron/k8s cronjob diario a las 00:30 UTC.
 """
 
 import argparse
 import asyncio
+import sys
+from pathlib import Path
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
+
+# Asegurar que app está en el path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker

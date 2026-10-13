@@ -751,11 +751,11 @@ class BetaPilotResponse(BaseModel):
     onboarded_at: datetime | None
     completed_at: datetime | None
     notes: str | None
-    metadata: dict
+    metadata: dict = Field(validation_alias="extra_metadata")
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class BetaFeedbackCreate(BaseModel):

@@ -10,8 +10,9 @@ from app.api.v1.schemas import (
     ServiceResponse,
     ServiceUpdate,
 )
-from app.core.auth.dependencies import CurrentUser, SessionDep
+from app.core.auth.dependencies import CurrentTenant, CurrentUser, SessionDep
 from app.core.logging import get_logger
+from app.core.plan import guard_service_creation
 from app.repositories.service import ServiceRepository
 
 logger = get_logger(__name__)
@@ -43,14 +44,17 @@ async def list_services(
 @router.post("", response_model=ServiceResponse, status_code=status.HTTP_201_CREATED)
 async def create_service(
     session: SessionDep,
-    user: CurrentUser,
+    tenant: CurrentTenant,
     data: ServiceCreate,
     response: Response,
 ) -> ServiceResponse:
     """Crea un nuevo servicio."""
+    # Plan Gate: validar límite de servicios por servidor
+    await guard_service_creation(session, tenant, data.server_id)
+
     repo = ServiceRepository(session)
     service = await repo.create(**data.model_dump())
-    logger.info("service_created", service_id=str(service.id), tenant_id=str(user.tenant_id))
+    logger.info("service_created", service_id=str(service.id), tenant_id=str(tenant.id))
     return ServiceResponse.model_validate(service)
 
 

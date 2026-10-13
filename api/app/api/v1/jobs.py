@@ -13,8 +13,9 @@ from app.api.v1.schemas import (
     JobRunResponse,
     JobUpdate,
 )
-from app.core.auth.dependencies import CurrentUser, SessionDep
+from app.core.auth.dependencies import CurrentTenant, CurrentUser, SessionDep
 from app.core.logging import get_logger
+from app.core.plan import guard_job_creation
 from app.repositories.job import JobRepository, JobRunRepository
 
 logger = get_logger(__name__)
@@ -46,14 +47,17 @@ async def list_jobs(
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(
     session: SessionDep,
-    user: CurrentUser,
+    tenant: CurrentTenant,
     data: JobCreate,
     response: Response,
 ) -> JobResponse:
     """Crea un nuevo job."""
+    # Plan Gate: validar límite de jobs por servidor
+    await guard_job_creation(session, tenant, data.server_id)
+
     repo = JobRepository(session)
     job = await repo.create(**data.model_dump())
-    logger.info("job_created", job_id=str(job.id), tenant_id=str(user.tenant_id))
+    logger.info("job_created", job_id=str(job.id), tenant_id=str(tenant.id))
     return JobResponse.model_validate(job)
 
 

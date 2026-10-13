@@ -37,6 +37,7 @@ from app.core.auth.schemas import TenantResponse
 from app.core.auth.security import create_access_token, create_refresh_token, hash_password
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.core.plan import guard_invitation_creation
 from app.models.tenant import Tenant
 from app.models.tenant_invitation import TenantInvitation
 from app.models.tenant_member import MemberRole, TenantMember
@@ -230,6 +231,9 @@ async def create_invitation(
     mano si el envio por email falla (SMTP sin configurar en dev, por ejemplo).
     """
     email = str(data.email).lower()
+
+    # Plan Gate: validar límite de miembros antes de invitar
+    await guard_invitation_creation(session, tenant)
 
     # Pre-check del duplicado: el indice parcial uq_tenant_invitation_pending
     # solo se manifiesta en el commit, y para entonces la session async ya

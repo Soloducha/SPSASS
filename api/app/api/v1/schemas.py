@@ -718,3 +718,119 @@ class AcceptInvitationResponse(BaseModel):
     refresh_token: str
     user: UserResponse
     tenant: TenantResponse
+
+
+# ──────────────────────────────────────────────
+# Beta Cerrada Schemas (T5 - Mes 6)
+# ──────────────────────────────────────────────
+
+class BetaStatusResponse(BaseModel):
+    """Estado de la beta cerrada (endpoint público)."""
+    beta_enabled: bool
+    feedback_enabled: bool
+    metrics_enabled: bool
+
+
+class BetaPilotCreate(BaseModel):
+    """Request para agregar piloto a la beta."""
+    tenant_id: UUID
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class BetaPilotStatusUpdate(BaseModel):
+    """Request para actualizar estado de piloto."""
+    action: str = Field(pattern="^(onboard|complete|remove|reactivate)$")
+
+
+class BetaPilotResponse(BaseModel):
+    """Piloto de la beta serializado."""
+    id: UUID
+    tenant_id: UUID
+    status: str
+    invited_by_id: UUID | None
+    onboarded_at: datetime | None
+    completed_at: datetime | None
+    notes: str | None
+    metadata: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BetaFeedbackCreate(BaseModel):
+    """Request para enviar feedback desde widget in-app."""
+    category: str = Field(pattern="^(bug|feature|ux|performance|other)$")
+    title: str = Field(min_length=1, max_length=255)
+    description: str = Field(min_length=1, max_length=5000)
+    rating: int | None = Field(default=None, ge=1, le=5)
+    page_url: str | None = Field(default=None, max_length=500)
+    user_agent: str | None = None
+    screen_resolution: str | None = Field(default=None, max_length=50)
+
+
+class BetaFeedbackResponse(BaseModel):
+    """Feedback de piloto serializado."""
+    id: UUID
+    pilot_id: UUID
+    user_id: UUID | None
+    user_email: str | None
+    category: str
+    title: str
+    description: str
+    rating: int | None
+    page_url: str | None
+    user_agent: str | None
+    screen_resolution: str | None
+    status: str
+    assigned_to: UUID | None
+    resolved_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BetaMetricsSummaryResponse(BaseModel):
+    """Resumen agregado de métricas de adopción."""
+    period_days: int
+    start_date: str
+    end_date: str
+    total_dau: int
+    total_servers: int
+    total_api_keys: int
+    total_alerts_triggered: int
+    total_alerts_resolved: int
+    total_reports: int
+    total_invitations_sent: int
+    total_invitations_accepted: int
+    total_members: int
+    total_sessions: int
+    avg_session_duration_seconds: float
+    pilot_tenant_id: str | None = None
+    pilot_status: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class PilotMetricsSnapshotResponse(BaseModel):
+    """Snapshot diario de métricas de un piloto."""
+    id: UUID
+    pilot_id: UUID
+    date: datetime
+    dau: int
+    servers_count: int
+    api_keys_count: int
+    alerts_triggered: int
+    alerts_resolved: int
+    reports_generated: int
+    invitations_sent: int
+    invitations_accepted: int
+    members_count: int
+    total_sessions: int
+    avg_session_duration_seconds: float
+    features_used: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

@@ -18,6 +18,7 @@ from app.core.auth.dependencies import CurrentTenant, RequireAdmin, SessionDep
 from app.core.auth.schemas import ApiKeyCreateRequest
 from app.core.auth.service import create_api_key as service_create_api_key
 from app.core.logging import get_logger
+from app.core.plan import guard_api_key_creation
 from app.models.api_key import ApiKey
 
 logger = get_logger(__name__)
@@ -72,6 +73,9 @@ async def create_api_key_endpoint(
     (uq_api_key_tenant_name): un duplicado devuelve 409.
     **La clave en claro (`key`) solo se muestra UNA vez, aqui.**
     """
+    # Plan Gate: validar límite de API keys antes de crear
+    await guard_api_key_creation(session, tenant)
+
     # Pre-check del duplicado: el unique constraint solo se manifiesta en el
     # commit del service, y para entonces la session async ya quedo envenenada
     # (PendingRollbackError). uq_api_key_tenant_name hace este SELECT barato.

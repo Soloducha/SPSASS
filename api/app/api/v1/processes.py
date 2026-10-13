@@ -10,8 +10,9 @@ from app.api.v1.schemas import (
     ProcessResponse,
     ProcessUpdate,
 )
-from app.core.auth.dependencies import CurrentUser, SessionDep
+from app.core.auth.dependencies import CurrentTenant, CurrentUser, SessionDep
 from app.core.logging import get_logger
+from app.core.plan import guard_process_creation
 from app.repositories.process import ProcessRepository
 
 logger = get_logger(__name__)
@@ -43,14 +44,17 @@ async def list_processes(
 @router.post("", response_model=ProcessResponse, status_code=status.HTTP_201_CREATED)
 async def create_process(
     session: SessionDep,
-    user: CurrentUser,
+    tenant: CurrentTenant,
     data: ProcessCreate,
     response: Response,
 ) -> ProcessResponse:
     """Crea un nuevo proceso."""
+    # Plan Gate: validar límite de procesos por servidor
+    await guard_process_creation(session, tenant, data.server_id)
+
     repo = ProcessRepository(session)
     process = await repo.create(**data.model_dump())
-    logger.info("process_created", process_id=str(process.id), tenant_id=str(user.tenant_id))
+    logger.info("process_created", process_id=str(process.id), tenant_id=str(tenant.id))
     return ProcessResponse.model_validate(process)
 
 

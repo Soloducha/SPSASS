@@ -12,8 +12,9 @@ from app.api.v1.schemas import (
     ReportListResponse,
     ReportResponse,
 )
-from app.core.auth.dependencies import CurrentUser, SessionDep
+from app.core.auth.dependencies import CurrentTenant, CurrentUser, SessionDep
 from app.core.logging import get_logger
+from app.core.plan import guard_report_creation
 from app.models.report import ReportStatus, ReportType
 from app.repositories.report import ReportRepository
 
@@ -56,11 +57,14 @@ def _parse_datetime(value: str | None) -> datetime | None:
 @router.post("", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
 async def create_report(
     session: SessionDep,
-    user: CurrentUser,
+    tenant: CurrentTenant,
     data: ReportCreate,
     response: Response,
 ) -> ReportResponse:
     """Crea un reporte manual con status PENDING."""
+    # Plan Gate: validar límite de reportes/mes antes de crear
+    await guard_report_creation(session, tenant)
+
     repo = ReportRepository(session)
     report = await repo.create(
         type=data.type,
@@ -69,22 +73,25 @@ async def create_report(
         payload=data.params,
         status=ReportStatus.PENDING,
     )
-    logger.info("report_created", report_id=str(report.id), tenant_id=str(user.tenant_id), type=data.type.value)
+    logger.info("report_created", report_id=str(report.id), tenant_id=str(tenant.id), type=data.type.value)
     return ReportResponse.model_validate(report)
 
 
 @router.post("/generate", status_code=status.HTTP_202_ACCEPTED)
 async def generate_report(
     session: SessionDep,
-    user: CurrentUser,
+    tenant: CurrentTenant,
     data: ReportGenerateRequest,
-    response: Response,
+response: Response,
 ) -> None:
     """Generación asíncrona de reporte.
 
     Crea un Report con status=PENDING y devuelve 202 + Location header.
     El worker (T3) procesará el reporte y actualizará status/payload.
     """
+    # Plan Gate: validar límite de reportes/mes antes de crear
+    await guard_report_creation(session, tenant)
+
     repo = ReportRepository(session)
     report = await repo.create(
         type=data.type,
@@ -93,7 +100,7 @@ async def generate_report(
         payload=data.params or {},
         status=ReportStatus.PENDING,
     )
-    logger.info("report_generate_queued", report_id=str(report.id), tenant_id=str(user.tenant_id), type=data.type.value)
+    logger.info("report_generate_queued", report_id=str(report.id), tenant_id=str(tenant.id), type=data.type.value)
 
     # 202 Accepted + Location header
     response.status_code = status.HTTP_202_ACCEPTED

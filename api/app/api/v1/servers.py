@@ -15,6 +15,7 @@ from app.api.v1.schemas import (
 )
 from app.core.auth.dependencies import ApiKeyAuth, CurrentUser, SessionDep
 from app.core.logging import get_logger
+from app.core.plan import guard_server_creation
 from app.models.agent_command import AgentCommand, AgentCommandStatus
 from app.models.server import ServerStatus
 from app.repositories.agent_command import AgentCommandRepository
@@ -64,6 +65,9 @@ async def register_server(
         logger.info("server_updated", server_id=str(server.id), hostname=data.hostname)
         response.status_code = status.HTTP_200_OK
     else:
+        # Plan Gate: validar límite de servidores antes de crear
+        await guard_server_creation(session, tenant)
+
         # Crear nuevo
         server = await repo.create(
             hostname=data.hostname,

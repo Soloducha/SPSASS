@@ -104,6 +104,17 @@ class Settings(BaseSettings):
     MAX_PAGE_SIZE: int = Field(default=100, ge=1, le=1000)
 
     # ──────────────────────────────────────────────
+    # Rate Limiting
+    # ──────────────────────────────────────────────
+    RATE_LIMIT_ENABLED: bool = Field(
+        default=True, description="Habilitar rate limiting global"
+    )
+    # Límites por defecto (se sobreescriben por plan via Plan Gates)
+    RATE_LIMIT_API_DEFAULT: int = Field(default=100, ge=1, description="Req/min por API key (default)")
+    RATE_LIMIT_WEB_DEFAULT: int = Field(default=30, ge=1, description="Req/min por IP (default)")
+    RATE_LIMIT_WINDOW_SECONDS: int = Field(default=60, ge=1, description="Ventana deslizante en segundos")
+
+    # ──────────────────────────────────────────────
     # SMTP (Email delivery)
     # ──────────────────────────────────────────────
     SMTP_HOST: str = Field(default="", description="SMTP server host")
@@ -151,6 +162,19 @@ class Settings(BaseSettings):
     )
     INVITATION_EXPIRE_DAYS: int = Field(
         default=7, ge=1, le=90, description="Validez del token de invitacion en dias"
+    )
+
+    # ──────────────────────────────────────────────
+    # Beta Cerrada (T5 - Mes 6)
+    # ──────────────────────────────────────────────
+    BETA_ENABLED: bool = Field(
+        default=False, description="Habilita beta cerrada (feature flag global)"
+    )
+    BETA_FEEDBACK_ENABLED: bool = Field(
+        default=True, description="Habilita widget de feedback en beta"
+    )
+    BETA_METRICS_ENABLED: bool = Field(
+        default=True, description="Habilita recolección de métricas de adopción"
     )
 
 

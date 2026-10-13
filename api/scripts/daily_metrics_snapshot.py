@@ -44,7 +44,7 @@ async def init_db_with_mode(use_sqlite: bool = False):
     
     if use_sqlite:
         engine = create_async_engine(
-            "sqlite+aiosqlite:///:memory:",
+            "sqlite+aiosqlite:///./test_beta.db",
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
             echo=False,
@@ -87,7 +87,7 @@ async def compute_metrics_for_pilot(
               AND u.last_login_at >= :day_start
               AND u.last_login_at < :day_end
         """),
-        {"tenant_id": tenant_id, "day_start": day_start, "day_end": day_end},
+        {"tenant_id": str(tenant_id), "day_start": day_start, "day_end": day_end},
     )
     dau = dau_result.scalar() or 0
 
@@ -271,7 +271,7 @@ async def run_snapshot(target_date: date, pilot_ids: list[UUID] | None = None) -
         for pilot in pilots:
             metrics = await compute_metrics_for_pilot(session, pilot, target_date)
             snapshot = await upsert_snapshot(session, pilot, target_date, metrics)
-            print(f"   [OK] {pilot.tenant_id} (pilot: {pilot.id[:8]}...) -- DAU: {metrics['dau']}, "
+            print(f"   [OK] {str(pilot.tenant_id)} (pilot: {str(pilot.id)[:8]}...) -- DAU: {metrics['dau']}, "
                   f"Servers: {metrics['servers_count']}, Alerts: {metrics['alerts_triggered']}, "
                   f"Reports: {metrics['reports_generated']}")
 

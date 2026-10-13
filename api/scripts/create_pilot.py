@@ -37,8 +37,10 @@ async def init_db_with_mode(use_sqlite: bool = False):
     
     if use_sqlite:
         # SQLite en memoria para desarrollo
+        # Usar archivo SQLite para compartir entre scripts
+        db_path = "sqlite+aiosqlite:///./test_beta.db"
         engine = create_async_engine(
-            "sqlite+aiosqlite:///:memory:",
+            db_path,
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
             echo=False,
@@ -133,7 +135,7 @@ async def list_pilots() -> None:
         for pilot, tenant_name in rows:
             onboarded = pilot.onboarded_at.strftime("%Y-%m-%d %H:%M") if pilot.onboarded_at else "—"
             notes = (pilot.notes[:40] + "...") if pilot.notes and len(pilot.notes) > 40 else (pilot.notes or "—")
-            print(f"{pilot.id:<36} {tenant_name:<30} {pilot.status.value:<12} {onboarded:<20} {notes}")
+            print(f"{str(pilot.id):<36} {tenant_name:<30} {pilot.status.value:<12} {onboarded:<20} {notes}")
 
 
 async def activate_pilot(pilot_id: str) -> None:
@@ -141,13 +143,13 @@ async def activate_pilot(pilot_id: str) -> None:
         result = await session.execute(select(PilotTenant).where(PilotTenant.id == UUID(pilot_id)))
         pilot = result.scalar_one_or_none()
         if not pilot:
-            print(f"❌ Piloto {pilot_id} no encontrado")
+            print(f"[ERROR] Piloto {pilot_id} no encontrado")
             sys.exit(1)
 
         pilot.status = PilotStatus.ACTIVE
         pilot.onboarded_at = __import__('datetime').datetime.now(__import__('datetime').UTC)
         await session.commit()
-        print(f"✅ Piloto activado: {pilot.id} (tenant: {pilot.tenant_id})")
+        print(f"[OK] Piloto activado: {pilot.id} (tenant: {pilot.tenant_id})")
 
 
 async def complete_pilot(pilot_id: str) -> None:
@@ -155,13 +157,13 @@ async def complete_pilot(pilot_id: str) -> None:
         result = await session.execute(select(PilotTenant).where(PilotTenant.id == UUID(pilot_id)))
         pilot = result.scalar_one_or_none()
         if not pilot:
-            print(f"❌ Piloto {pilot_id} no encontrado")
+            print(f"[ERROR] Piloto {pilot_id} no encontrado")
             sys.exit(1)
 
         pilot.status = PilotStatus.COMPLETED
         pilot.completed_at = __import__('datetime').datetime.now(__import__('datetime').UTC)
         await session.commit()
-        print(f"✅ Piloto completado: {pilot.id}")
+        print(f"[OK] Piloto completado: {pilot.id}")
 
 
 async def main():

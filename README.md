@@ -180,6 +180,7 @@ SPSAAS/
 - [`alert-timestamp-timezone-drift.md`](odd/tasks/alert-timestamp-timezone-drift.md) — Fix de timezone en timestamps de alertas
 - [`vitest-setup-web.md`](odd/tasks/vitest-setup-web.md) — Vitest infra + tests unitarios validación/FormData (Telegram) + CI web
 - Sub-READMEs: [`api/README.md`](api/README.md), [`agent/README.md`](agent/README.md), [`web/README.md`](web/README.md)
+- **Manual de usuario:** [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md) — Guía completa end-to-end
 
 ---
 

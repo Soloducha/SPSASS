@@ -88,6 +88,8 @@ docker compose down -v
 | `GET` | `/api/v1/alerts` | JWT — alertas con filtros (`status`, `severity`, `rule_id`) |
 | `POST` | `/api/v1/alerts/{alert_id}/ack`, `/resolve` | JWT — acuse / resolución |
 | `GET` | `/healthz`, `/readyz` | — |
+| `GET`/`POST` | `/api/v1/beta/status`, `/beta/pilots`, `/beta/feedback`, `/beta/metrics` | JWT (admin) / público |
+| `POST` | `/api/v1/invitations` (create/list/accept) | JWT (admin) / público |
 
 Swagger UI: `http://localhost:8000/docs` (solo dev).
 
@@ -141,6 +143,8 @@ SPSAAS/
 │   ├── tests/
 │   ├── alembic/
 │   ├── scripts/                    # seed_admin.py (bootstrap tenant + admin)
+│   ├── create_pilot.py         # CLI: crear/listar/activar/completar pilotos beta
+│   └── daily_metrics_snapshot.py # Agregación diaria métricas adopción (DAU, alerts, reports)
 │   ├── pyproject.toml
 │   ├── Dockerfile
 │   └── Dockerfile.worker
@@ -171,6 +175,7 @@ SPSAAS/
   - [`quality-gate.md`](odd/tasks/quality-gate.md) — Gate de calidad (mypy 0 + ruff pragmático)
   - [`review-followups.md`](odd/tasks/review-followups.md) — Follow-ups de la review quality-gate
   - [`next16-web.md`](odd/tasks/next16-web.md), [`deps-refresh.md`](odd/tasks/deps-refresh.md) — Web Next 16 + refresh de dependencias
+  - [`mes6-pulido-beta.md`](odd/tasks/mes6-pulido-beta.md) — Mes 6: Pulido + Beta (Onboarding, Invitaciones, Plan Gates, Hardening, Beta Cerrada, Docs, Pricing)
 - [`alert-web-ui.md`](odd/tasks/alert-web-ui.md) — UI web de alertas (overview, reglas, edición, accesibilidad)
 - [`alert-timestamp-timezone-drift.md`](odd/tasks/alert-timestamp-timezone-drift.md) — Fix de timezone en timestamps de alertas
 - [`vitest-setup-web.md`](odd/tasks/vitest-setup-web.md) — Vitest infra + tests unitarios validación/FormData (Telegram) + CI web
@@ -213,8 +218,8 @@ pnpm run lint
 pnpm run build
 ```
 
-Baseline API: **267 passed, 1 skipped, 1 xfailed, 2 xpassed** — verificado 2026-10-04.
-Web: **95 tests Vitest pass**, lint clean, build ok — verificado 2026-10-02 (PR #30).
+Baseline API: **292 passed, 1 skipped, 1 xfailed, 2 xpassed** — verificado 2026-10-13.
+Web: **174 tests Vitest pass + 9 Playwright E2E**, lint clean, build ok — verificado 2026-10-13.
 Agente Go: **collector 83%, config 96.5%, sender 84.7%** — verificado 2026-10-04.
 
 ---
@@ -258,7 +263,7 @@ Ver `propuesta.md` sección 4 y 10 para detalles de escalado.
 | **3** | Alertas | Alert Engine, reglas, dedupe, entrega Webhook + Email (SMTP) + Telegram | ✅ Entregado (canales v1: webhook + email + telegram; WhatsApp ⏳) |
 | **4** | Procesos + jobs | Servicios/procesos, job monitor, **auto-restart (entregado)**, WhatsApp | ⏳ Parcial |
 | **5** | Reportes | Disponibilidad, incidentes, SLA, métricas históricas | ⏳ Pendiente |
-| **6** | Pulido + beta | Onboarding, invitaciones, plan gates, beta cerrada 3-5 pilotos | ⏳ Pendiente |
+| **6** | Pulido + beta | Onboarding, invitaciones, plan gates, hardening, beta cerrada 3-5 pilotos, docs, pricing | ✅ Código completo · Operativa pendiente |
 
 Ver `propuesta.md` §7 para la fuente de verdad del roadmap.
 

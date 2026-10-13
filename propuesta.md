@@ -154,7 +154,7 @@ reports(id, tenant_id, period_start, period_end, type, payload JSONB, generated_
 | **3** | Alertas | Alert Engine, reglas, dedupe/escalado, canal **Telegram + Email** |
 | **4** | Procesos + jobs | Servicios/procesos con auto-restart, job monitor cron/batch, detección de errores, canal **WhatsApp** |
 | **5** | Reportes | Disponibilidad, incidentes, alertas generadas, **SLA**, métricas históricas en dashboard | ✅ Entregado |
-| **6** | Pulido + beta | Onboarding, invitaciones, plan gates, hardening, **beta cerrada con 3–5 pilotos**, docs, pricing page | 🚧 Código completo, operativa pendiente (onboarding pilotos + Slack) |
+| **6** | Pulido + beta | Onboarding, invitaciones, plan gates, hardening, **beta cerrada con 3–5 pilotos**, docs, pricing page | 🚧 **Código completo** — operativa pendiente (onboarding pilotos + Slack) |
 
 **Iteración clave**: cada mes termina con algo demostrable al cliente. Mes 2 ya mostramos servidores monitoreados.
 
@@ -221,12 +221,18 @@ app/
 
 ## Checklist de validación
 
-- [ ] Time-to-value real: instalar agente en un servidor de prueba y ver métricas en el dashboard
-- [ ] Alerta de Telegram configurada y recibida (verificar latencia y dedupe)
-- [ ] Un cron job monitoreado con detección de fallo real
-- [ ] Reporte SLA mensual generado automáticamente
-- [ ] Aislamiento multi-tenant: verificar que el tenant A no ve datos del tenant B
+- [x] Time-to-value real: instalar agente en un servidor de prueba y ver métricas en el dashboard
+- [x] Alerta de Telegram configurada y recibida (verificar latencia y dedupe)
+- [x] Un cron job monitoreado con detección de fallo real
+- [x] Reporte SLA mensual generado automáticamente
+- [x] Aislamiento multi-tenant: verificar que el tenant A no ve datos del tenant B (RLS + tests)
 - [ ] Deploy completo en VPS de 2 vCPU/4 GB con Docker Compose
+- [x] Onboarding web multi-step (tenant → servidor → API key → agente → verify)
+- [x] Invitaciones a tenant (email + token JWT + accept page)
+- [x] Plan Gates (límites por Free/Starter/Growth/Enterprise)
+- [x] Hardening (rate limiting, security headers, audit log, healthz/readyz)
+- [x] Docs (/docs MDX + Swagger UI) + Pricing page (/pricing SSG)
+- [x] Playwright E2E (onboarding + invitaciones UI)
 
 ## Próximo paso
 

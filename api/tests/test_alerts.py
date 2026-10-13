@@ -46,6 +46,37 @@ async def _register_and_login(client: AsyncClient, email: str) -> str:
     return login_resp.json()["access_token"]  # type: ignore[no-any-return]
 
 
+async def _register_and_login_with_plan(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    email: str,
+    plan: str = "enterprise",
+) -> str:
+    """Crea tenant con plan específico, registra usuario y retorna access_token."""
+    from app.models.tenant import PlanType, Tenant
+    
+    tenant_slug = f"test-{plan}-{email.split('@')[0]}"
+    tenant = Tenant(name=f"Test {plan}", slug=tenant_slug, plan=PlanType(plan))
+    db_session.add(tenant)
+    await db_session.flush()
+    await db_session.commit()
+    
+    await client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "password123",
+            "full_name": email.split("@", maxsplit=1)[0],
+            "tenant_slug": tenant_slug,
+        },
+    )
+    login_resp = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "password123"},
+    )
+    return login_resp.json()["access_token"]  # type: ignore[no-any-return]
+
+
 async def _get_user_id(client: AsyncClient, token: str) -> str:
     """Obtiene el ID del usuario autenticado vía /auth/me."""
     me_resp = await client.get(
@@ -149,8 +180,13 @@ async def _add_metrics(session: AsyncSession, seed: _MetricSeed) -> list[datetim
     return timestamps
 
 
-async def _delete_metrics(session: AsyncSession, timestamps: list[datetime]) -> None:
-    """Borra las métricas con los timestamps indicados.
+async def _delete_metrics(
+    session: AsyncSession,
+    timestamps: list[datetime],
+    tenant_id: UUID,
+    metric_type: MetricType,
+) -> None:
+    """Borra las métricas con los timestamps, tenant y tipo indicados.
 
     Simula que esos samples salieron de la ventana de evaluación, que es lo que
     ocurre en producción conforme avanza el reloj. Necesario porque el motor lee
@@ -161,7 +197,8 @@ async def _delete_metrics(session: AsyncSession, timestamps: list[datetime]) -> 
     for ts in timestamps:
         metric = await session.scalar(
             select(Metric).where(
-                Metric.server_id.is_not(None),
+                Metric.tenant_id == tenant_id,
+                Metric.type == metric_type,
                 Metric.ts == ts,
             )
         )
@@ -795,7 +832,7 @@ class TestAlertEngine:
 
         # Phase 2: old breaching samples roll out of the window and healthy
         # samples take their place → normal auto-resolve, silenced_at stays NULL.
-        await _delete_metrics(db_session, violating_ts)
+        await _delete_metrics(db_session, violating_ts, tenant.id, MetricType.CPU_USAGE)
         await _add_metrics(
             db_session,
             _MetricSeed(
@@ -815,10 +852,14 @@ class TestAlertEngine:
         # Phase 3: healthy samples roll out, breach returns → a NEW alert fires.
         healthy_ts = (
             await db_session.scalars(
-                select(Metric.ts).where(Metric.server_id == server.id, Metric.type == MetricType.CPU_USAGE)
+                select(Metric.ts).where(
+                    Metric.server_id == server.id,
+                    Metric.tenant_id == tenant.id,
+                    Metric.type == MetricType.CPU_USAGE,
+                )
             )
         ).all()
-        await _delete_metrics(db_session, list(healthy_ts))
+        await _delete_metrics(db_session, list(healthy_ts), tenant.id, MetricType.CPU_USAGE)
         await _add_metrics(
             db_session,
             _MetricSeed(
@@ -849,11 +890,13 @@ class TestAlertRulesAPI:
     """Tests CRUD de reglas vía HTTP."""
 
     @pytest.mark.asyncio
-    async def test_create_list_get_patch_delete_rule(self, async_client: AsyncClient) -> None:
+    async def test_create_list_get_patch_delete_rule(
+        self, async_client: AsyncClient, db_session: AsyncSession
+    ) -> None:
         """CRUD completo de regla de alerta."""
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            token = await _register_and_login(client, "alert_owner@example.com")
+            token = await _register_and_login_with_plan(client, db_session, "alert_owner@example.com", "enterprise")
 
             # Crear regla
             create_resp = await client.post(

@@ -29,6 +29,37 @@ async def _register_and_login(client: AsyncClient, email: str) -> str:
     return login_resp.json()["access_token"]
 
 
+async def _register_and_login_with_plan(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    email: str,
+    plan: str = "enterprise",
+) -> str:
+    """Crea tenant con plan específico, registra usuario y retorna access_token."""
+    from app.models.tenant import PlanType, Tenant
+    
+    tenant_slug = f"test-{plan}-{email.split('@')[0]}"
+    tenant = Tenant(name=f"Test {plan}", slug=tenant_slug, plan=PlanType(plan))
+    db_session.add(tenant)
+    await db_session.flush()
+    await db_session.commit()
+    
+    await client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "password123",
+            "full_name": email.split("@", maxsplit=1)[0],
+            "tenant_slug": tenant_slug,
+        },
+    )
+    login_resp = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "password123"},
+    )
+    return login_resp.json()["access_token"]
+
+
 async def _get_tenant_id_from_token(client: AsyncClient, token: str) -> str:
     """Obtiene el tenant_id del usuario autenticado vía /auth/me."""
     me_resp = await client.get(
@@ -202,7 +233,7 @@ class TestReportsCRUD:
         location = gen_resp.headers["Location"]
         get_resp = await client.get(
             location,
-            headers={"Authorization": f"Bearer {token}"},
+headers={"Authorization": f"Bearer {token}"},
         )
         assert get_resp.status_code == 200
         assert get_resp.json()["payload"] == {}
@@ -213,7 +244,7 @@ class TestReportsCRUD:
     ) -> None:
         """Filtros en listado: type, status, period_start, period_end, paginación."""
         client = async_client
-        token = await _register_and_login(client, "report_filters@example.com")
+        token = await _register_and_login_with_plan(client, db_session, "report_filters@example.com", "enterprise")
         _ = await _get_tenant_id_from_token(client, token)
 
         now = datetime.now(UTC)
@@ -450,7 +481,7 @@ class TestReportsCRUD:
         )
         assert cross.status_code == 404
 
-        # B no puede ver reporte de A
+# B no puede ver reporte de A
         cross = await client.get(
             f"/api/v1/reports/{report_id_a}",
             headers={"Authorization": f"Bearer {token_b}"},
@@ -463,7 +494,7 @@ class TestReportsCRUD:
     ) -> None:
         """Validación de ReportType enum en create y generate."""
         client = async_client
-        token = await _register_and_login(client, "report_enum@example.com")
+        token = await _register_and_login_with_plan(client, db_session, "report_enum@example.com", "enterprise")
         now = datetime.now(UTC)
 
         # Todos los tipos válidos

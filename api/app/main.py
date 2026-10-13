@@ -4,7 +4,6 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,6 +13,7 @@ from app.api import (
     alerts_router,
     api_keys_router,
     auth_router,
+    beta_router,
     dashboard_router,
     ingest_router,
     invitations_router,
@@ -25,6 +25,8 @@ from app.api import (
 )
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
+from app.core.rate_limit import close_redis_client, get_rate_limiter
+from app.core.security import add_security_headers
 from app.core.tenant.middleware import RequestResponseEndpoint, TenantMiddleware
 from app.db.session import close_db, get_engine, init_db
 
@@ -41,12 +43,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info("api_starting", environment=settings.ENVIRONMENT)
     await init_db()
+    # Inicializar rate limiter (crea conexión Redis)
+    await get_rate_limiter()
     logger.info("api_started")
 
     yield
 
     # Shutdown
     logger.info("api_shutting_down")
+    await close_redis_client()
     await close_db()
     logger.info("api_shutdown_complete")
 
@@ -69,7 +74,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Tenant Middleware (debe ir después de CORS, antes de logging para tener contexto)
+# Security Headers (después de CORS, antes de otros middlewares)
+add_security_headers(app, settings.ENVIRONMENT)
+
+# Rate Limiting Middleware (global, opcional - se puede usar dependencies en su lugar)
+# from app.core.rate_limit import rate_limit_middleware
+# app.middleware("http")(rate_limit_middleware)
+
+# Tenant Middleware (debe ir después de CORS/Security, antes de logging para tener contexto)
 app.add_middleware(TenantMiddleware)
 
 
@@ -99,7 +111,7 @@ async def log_requests(request: Request, call_next: RequestResponseEndpoint) -> 
 @app.get("/healthz", tags=["health"])
 async def healthz() -> JSONResponse:
     """
-    Health check endpoint.
+    Health check endpoint (liveness probe).
     - 200: API sana
     - 503: API no disponible (BD, Redis, etc.)
     """
@@ -121,11 +133,10 @@ async def healthz() -> JSONResponse:
         checks["database"] = "failed"
         status_code = 503
 
-    # Check Redis
+    # Check Redis (usar cliente compartido del rate limiter)
     try:
-        redis_client = redis.from_url(str(settings.REDIS_URL))
-        await redis_client.ping()
-        await redis_client.aclose()
+        limiter = await get_rate_limiter()
+        await limiter.redis.ping()
         checks["redis"] = "ok"
     except Exception:
         logger.exception("healthz_redis_failed")
@@ -139,10 +150,54 @@ async def healthz() -> JSONResponse:
 async def readyz() -> JSONResponse:
     """
     Readiness check - más estricto que healthz.
-    Verifica que la API puede servir tráfico (migraciones aplicadas, etc.).
+    Verifica que la API puede servir tráfico:
+    - DB conectada y migraciones aplicadas
+    - Redis conectado
+    - Rate limiter funcional
     """
-    # Por ahora mismo que healthz, en futuro verificar migraciones
-    return await healthz()
+    checks = {
+        "api": "ok",
+        "database": "unknown",
+        "redis": "unknown",
+        "rate_limiter": "unknown",
+        "migrations": "unknown",
+    }
+    status_code = 200
+
+    # Check DB + migraciones
+    try:
+        engine = get_engine()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+
+        # Verificar migraciones (alembic_version existe y tiene versión)
+        result = await conn.execute(text("SELECT version_num FROM alembic_version"))
+        version = result.scalar_one_or_none()
+        if version:
+            checks["migrations"] = f"applied:{version}"
+        else:
+            checks["migrations"] = "pending"
+            status_code = 503
+    except Exception:
+        logger.exception("readyz_db_failed")
+        checks["database"] = "failed"
+        checks["migrations"] = "failed"
+        status_code = 503
+
+    # Check Redis + rate limiter
+    try:
+        limiter = await get_rate_limiter()
+        await limiter.redis.ping()
+        checks["redis"] = "ok"
+        checks["rate_limiter"] = "ok"
+    except Exception:
+        logger.exception("readyz_redis_failed")
+        checks["redis"] = "failed"
+        checks["rate_limiter"] = "failed"
+        status_code = 503
+
+    return JSONResponse(content=checks, status_code=status_code)
 
 
 # ──────────────────────────────────────────────
@@ -177,6 +232,7 @@ app.include_router(jobs_router)
 app.include_router(reports_router)
 app.include_router(api_keys_router)
 app.include_router(invitations_router)
+app.include_router(beta_router)
 
 
 if __name__ == "__main__":

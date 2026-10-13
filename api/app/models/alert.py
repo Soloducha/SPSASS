@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -81,6 +81,30 @@ class Alert(Base, UUIDMixin, TimestampMixin, TenantAwareMixin):
     """Alerta disparada."""
 
     __tablename__ = "alerts"
+    __table_args__ = (
+        # Composite index for primary episode gate path (SERVICE/PROCESS/JOB)
+        # Query: rule_id + target_entity_id + status + silenced_at IS NOT NULL
+        Index(
+            "ix_alerts_episode_gate_target",
+            "rule_id",
+            "target_entity_id",
+            "status",
+            "silenced_at",
+            sqlite_where=text("status IN ('open', 'acknowledged', 'resolved')"),
+            postgresql_where=text("status IN ('open', 'acknowledged', 'resolved')"),
+        ),
+        # Composite index for legacy SERVER fallback path
+        # Query: rule_id + server_id + status + silenced_at IS NOT NULL
+        Index(
+            "ix_alerts_episode_gate_server",
+            "rule_id",
+            "server_id",
+            "status",
+            "silenced_at",
+            sqlite_where=text("status IN ('open', 'acknowledged', 'resolved')"),
+            postgresql_where=text("status IN ('open', 'acknowledged', 'resolved')"),
+        ),
+    )
 
     rule_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("alert_rules.id", ondelete="CASCADE"), nullable=True, index=True

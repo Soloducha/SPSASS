@@ -45,6 +45,7 @@ async def clean_database():
         "processes",
         "servers",
         "api_keys",
+        "tenant_invitations",
         "tenant_members",
         "users",
         "tenants",

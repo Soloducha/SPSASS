@@ -1,0 +1,208 @@
+---
+title: "Troubleshooting - Problemas Comunes"
+description: "Diagnóstico y solución de problemas frecuentes: agente, conectividad, métricas, alertas"
+sidebar: "troubleshooting"
+order: 1
+---
+
+# Troubleshooting - Problemas Comunes
+
+Guía de diagnóstico rápido para los problemas más frecuentes en SPSAAS.
+
+## Agente no reporta / Estado Offline
+
+### Síntomas
+- Servidor muestra estado `offline` en dashboard
+- No llegan métricas nuevas (`last_heartbeat_at` antiguo)
+
+### Diagnóstico
+
+```bash
+# 1. Verificar servicio (Linux)
+sudo systemctl status spsaas-agent
+
+# 2. Verificar servicio (Windows)
+Get-Service SPSAASAgent
+
+# 3. Ver logs del agente
+# Linux:
+sudo journalctl -u spsaas-agent -f
+# Windows:
+Get-Content "C:\ProgramData\SPSAAS Agent\logs\agent.log" -Wait
+
+# 4. Test conectividad API
+curl -v https://tu-instancia.spsaas.com/healthz
+# o desde Windows:
+Test-NetConnection -ComputerName tu-instancia.spsaas.com -Port 443
+```
+
+### Causas comunes y soluciones
+
+| Causa | Solución |
+|-------|----------|
+| API Key inválida/rotada | Regenerar API Key en dashboard y actualizar `config.yaml` |
+| Firewall bloquea salida | Permitir TCP 443/8000 hacia tu instancia |
+| DNS no resuelve | Verificar `/etc/resolv.conf` (Linux) o `nslookup` (Windows) |
+| Proxy corporativo | Configurar `HTTP_PROXY`/`HTTPS_PROXY` en entorno del servicio |
+| Reloj desincronizado (NTP) | `sudo timedatectl set-ntp true` / `w32tm /resync` |
+| Agente crashea (OOM) | Aumentar memoria o reducir `collection.interval_seconds` |
+
+---
+
+## Métricas incompletas / Valores nulos
+
+### Síntomas
+- Algunas métricas no aparecen en dashboard
+- Gráficas con gaps
+- `disk_usage` o `network_*` en null
+
+### Diagnóstico
+
+```bash
+# Verificar qué colectores fallan (Linux)
+sudo -u spsaas-agent /usr/local/bin/spsaas-agent --test-collectors
+
+# Verificar permisos en /proc, /sys
+ls -la /proc/stat /proc/meminfo /proc/diskstats /proc/net/dev
+
+# Verificar WMI/Performance Counters (Windows)
+Get-Counter -ListSet "*" | Select-Object CounterSetName
+```
+
+### Soluciones
+
+| Métrica | Causa típica | Solución |
+|---------|--------------|----------|
+| `disk_usage` | Sin permisos en mount points | Ejecutar agente como root/Administrador |
+| `network_*` | Interfaces virtuales (docker, veth) | Filtrar en `config.yaml`: `collection.network_interfaces: ["eth0", "ens*"]` |
+| `process_count` | WMI corrupto (Windows) | `winmgmt /verifyrepository` → `winmgmt /salvagerepository` |
+| `service_status` | Nombre exacto vs display name | Usar `service_name` exacto (ej: `nginx`, no `Nginx Web Server`) |
+
+---
+
+## Alertas no disparan / Falsos positivos
+
+### Alertas no disparan
+
+| Causa | Verificación |
+|-------|--------------|
+| Regla inactiva | `is_active: true` en regla |
+| Umbral nunca se alcanza | Verificar métrica real vs umbral: `curl /metrics | grep cpu_usage` |
+| Duración muy alta | Reducir `duration_s` (ej: 300s → 60s) |
+| Entidad incorrecta | `entity_id` apunta a servidor inexistente |
+| Plan no permite canal | Plan Free solo permite `email` |
+
+### Falsos positivos (alertas que disparan sin razón)
+
+| Causa | Solución |
+|-------|----------|
+| Spike momentáneo | Aumentar `duration_s` (mínimo 60s recomendado) |
+| Métrica ruidosa | Usar operador `avg over window` si disponible, o aumentar umbral |
+| Reinicio programado | Silenciar ventana de mantenimiento via API o UI |
+| Batch jobs puntuales | Excluir servidor/servicio en regla o crear regla de excepción |
+
+---
+
+## Conectividad / Red
+
+### Error: `connection refused` / `timeout`
+
+```bash
+# Test desde el servidor del agente
+telnet tu-instancia.spsaas.com 443
+# o
+nc -zv tu-instancia.spsaas.com 443
+
+# Verificar DNS
+dig tu-instancia.spsaas.com
+nslookup tu-instancia.spsaas.com
+```
+
+### Proxy corporativo
+
+**Linux (systemd):**
+```ini
+# /etc/systemd/system/spsaas-agent.service.d/proxy.conf
+[Service]
+Environment=HTTP_PROXY=http://proxy.corp:3128
+Environment=HTTPS_PROXY=http://proxy.corp:3128
+Environment=NO_PROXY=localhost,127.0.0.1,.corp.internal
+```
+
+**Windows (NSSM):**
+```powershell
+nssm set SPSAASAgent AppEnvironmentExtra HTTP_PROXY=http://proxy.corp:3128
+nssm set SPSAASAgent AppEnvironmentExtra HTTPS_PROXY=http://proxy.corp:3128
+```
+
+---
+
+## Performance / Recursos
+
+### Agente usa mucha CPU/Memoria
+
+| Ajuste | Efecto |
+|--------|--------|
+| `collection.interval_seconds: 60` (default 30) | Reduce CPU ~50% |
+| `collection.metrics: [cpu, memory]` (solo esenciales) | Reduce overhead |
+| `logging.level: warn` (default info) | Reduce I/O disco |
+
+### Base de datos crece demasiado
+
+- Verificar retención por plan: Free=7d, Starter=30d, Growth=90d, Enterprise=365d
+- Ejecutar limpieza manual: `DELETE FROM metrics WHERE created_at < NOW() - INTERVAL '30 days'`
+- Configurar TimescaleDB compression policy (auto en Enterprise)
+
+---
+
+## Autenticación / API
+
+### Error 401 / 403 en API
+
+```bash
+# Verificar token no expirado
+curl -H "Authorization: Bearer $TOKEN" https://api.spsaas.com/auth/me
+
+# Refresh token
+curl -X POST https://api.spsaas.com/auth/refresh \
+  -H "Authorization: Bearer $REFRESH_TOKEN"
+```
+
+### API Key del agente inválida
+
+1. En dashboard: **Configuración → API Keys** → Verificar que existe y no revocada
+2. Regenerar si necesario: **Crear nueva** → Actualizar `config.yaml` → Reiniciar agente
+3. Verificar prefijo: `spsk_` (configurable en `API_KEY_PREFIX`)
+
+---
+
+## Logs útiles para soporte
+
+Al reportar un issue, incluye:
+
+```bash
+# Linux: Info sistema + logs agente
+cat /etc/os-release
+systemctl status spsaas-agent
+journalctl -u spsaas-agent --since "1 hour ago" --no-pager
+/usr/local/bin/spsaas-agent --version
+
+# Windows: Info sistema + logs agente
+systeminfo
+Get-Service SPSAASAgent | Format-List *
+Get-Content "C:\ProgramData\SPSAAS Agent\logs\agent.log" -Tail 100
+C:\"Program Files"\SPSAAS Agent\spsaas-agent.exe --version
+```
+
+---
+
+## Contactar soporte
+
+Si el problema persiste:
+
+1. **Recopila logs** (ver sección anterior)
+2. **Incluye**: Versión agente, OS, plan SPSAAS, pasos para reproducir
+3. **Canales**:
+   - Email: `support@spsaas.com`
+   - Slack: `#spsaas-support` (planes Growth+)
+   - Dashboard: Botón **Ayuda → Reportar problema**

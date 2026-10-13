@@ -1,0 +1,167 @@
+---
+title: "Instalación del Agente - Linux (systemd)"
+description: "Instala y configura el agente SPSAAS en Linux usando systemd"
+sidebar: "installation"
+order: 1
+---
+
+# Instalación del Agente en Linux (systemd)
+
+Esta guía cubre la instalación del agente SPSAAS en distribuciones Linux modernas que usan **systemd** (Ubuntu 18.04+, Debian 10+, CentOS/RHEL 7+, Fedora, etc.).
+
+## Prerrequisitos
+
+- Linux con systemd
+- Acceso root o sudo
+- Python 3.8+ (el agente lo incluye embebido)
+- Conectividad de red hacia tu instancia SPSAAS (puerto 443 HTTPS / 8000 HTTP)
+
+## Paso 1: Obtener tu API Key
+
+1. Inicia sesión en el dashboard SPSAAS
+2. Ve a **Configuración → API Keys**
+3. Crea una nueva API Key con nombre descriptivo (ej: `server-prod-web-01`)
+4. **Copia la clave completa** (solo se muestra una vez)
+
+## Paso 2: Descargar e instalar
+
+```bash
+# Descargar el instalador (ajusta la URL a tu instancia)
+curl -fsSL https://tu-instancia.spsaas.com/agent/install.sh | sudo bash -s -- --api-key "spsk_xxxxxxxxxxxxx"
+```
+
+O manualmente:
+
+```bash
+# 1. Descargar el binario
+curl -fsSL -o /usr/local/bin/spsaas-agent https://tu-instancia.spsaas.com/agent/download/linux/amd64
+
+# 2. Hacer ejecutable
+chmod +x /usr/local/bin/spsaas-agent
+
+# 3. Crear usuario del servicio
+sudo useradd -r -s /bin/false -d /var/lib/spsaas-agent spsaas-agent
+
+# 4. Crear directorios
+sudo mkdir -p /etc/spsaas-agent /var/lib/spsaas-agent /var/log/spsaas-agent
+sudo chown spsaas-agent:spsaas-agent /var/lib/spsaas-agent /var/log/spsaas-agent
+```
+
+## Paso 3: Configurar
+
+Crear `/etc/spsaas-agent/config.yaml`:
+
+```yaml
+api:
+  url: "https://tu-instancia.spsaas.com"
+  api_key: "spsk_xxxxxxxxxxxxx"  # Tu API Key
+
+server:
+  hostname: "web-01"  # Nombre único para identificar este servidor
+  ip: "auto"          # Detectar automáticamente, o especifica IP fija
+
+collection:
+  interval_seconds: 30
+  metrics:
+    - cpu
+    - memory
+    - disk
+    - network
+    - processes
+    - services
+
+logging:
+  level: "info"
+  file: "/var/log/spsaas-agent/agent.log"
+  max_size_mb: 100
+  max_files: 5
+```
+
+## Paso 4: Instalar servicio systemd
+
+Crear `/etc/systemd/system/spsaas-agent.service`:
+
+```ini
+[Unit]
+Description=SPSAAS Monitoring Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=spsaas-agent
+Group=spsaas-agent
+ExecStart=/usr/local/bin/spsaas-agent --config /etc/spsaas-agent/config.yaml
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spsaas-agent
+
+# Seguridad
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/spsaas-agent /var/log/spsaas-agent /etc/spsaas-agent
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Recargar y habilitar:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now spsaas-agent
+```
+
+## Paso 5: Verificar
+
+```bash
+# Estado del servicio
+sudo systemctl status spsaas-agent
+
+# Logs en tiempo real
+sudo journalctl -u spsaas-agent -f
+
+# Verificar que reporta métricas
+curl -s http://localhost:9090/metrics  # Si expones endpoint local
+```
+
+En el dashboard SPSAAS deberías ver el servidor aparecer en **Servidores** con estado **Online** dentro de 1-2 minutos.
+
+## Actualización del agente
+
+```bash
+# Detener servicio
+sudo systemctl stop spsaas-agent
+
+# Descargar nueva versión
+curl -fsSL -o /usr/local/bin/spsaas-agent https://tu-instancia.spsaas.com/agent/download/linux/amd64
+chmod +x /usr/local/bin/spsaas-agent
+
+# Reiniciar
+sudo systemctl start spsaas-agent
+```
+
+## Desinstalación
+
+```bash
+sudo systemctl stop spsaas-agent
+sudo systemctl disable spsaas-agent
+sudo rm /etc/systemd/system/spsaas-agent.service
+sudo systemctl daemon-reload
+sudo rm -rf /etc/spsaas-agent /var/lib/spsaas-agent /var/log/spsaas-agent
+sudo rm /usr/local/bin/spsaas-agent
+sudo userdel spsaas-agent
+```
+
+## Solución de problemas
+
+| Problema | Solución |
+|----------|----------|
+| Servicio no inicia | `journalctl -u spsaas-agent -xe` para ver errores |
+| No aparece en dashboard | Verificar API Key y conectividad de red (`curl -v https://tu-instancia.spsaas.com/healthz`) |
+| Métricas incompletas | Revisar permisos en `/proc`, `/sys`; el usuario `spsaas-agent` necesita leer `/proc/stat`, `/proc/meminfo`, etc. |
+| Timeout de red | Verificar firewall; el agente necesita salida HTTPS (443) hacia tu instancia |

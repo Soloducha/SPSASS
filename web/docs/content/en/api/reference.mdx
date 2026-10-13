@@ -1,0 +1,184 @@
+---
+title: "API Reference - Swagger UI"
+description: "Referencia completa de la API REST de SPSAAS con Swagger UI interactivo"
+sidebar: "api"
+order: 1
+---
+
+# API Reference
+
+Documentación interactiva de la API REST de SPSAAS. Usa el explorador Swagger UI abajo para probar endpoints directamente.
+
+> **Nota**: Necesitas autenticarte (Bearer token o API Key) para probar endpoints protegidos. Usa el botón **Authorize** en la esquina superior derecha.
+
+## Acceso rápido
+
+- **Base URL**: `https://tu-instancia.spsaas.com/api/v1`
+- **Autenticación**: JWT Bearer token (web) o API Key `X-Api-Key` (agentes)
+- **Formato**: JSON (request/response)
+- **Rate limits**: Ver [Plan Gates](/docs/en/plan-gates) según tu suscripción
+
+## Swagger UI
+
+<div id="swagger-ui"></div>
+
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.33.1/swagger-ui.css" />
+<script src="https://unpkg.com/swagger-ui-dist@5.33.1/swagger-ui-bundle.js" crossorigin></script>
+<script>
+  window.onload = function() {
+    const ui = SwaggerUIBundle({
+      url: "/api/openapi.json",  // OpenAPI spec generada por FastAPI
+      dom_id: '#swagger-ui',
+      deepLinking: true,
+      presets: [
+        SwaggerUIBundle.presets.apis,
+        SwaggerUIBundle.standalonePreset
+      ],
+      layout: "BaseLayout",
+      tryItOutEnabled: true,
+      filter: true,
+      showExtensions: true,
+      showCommonExtensions: true,
+      syntaxHighlight: {
+        theme: "monokai"
+      }
+    });
+    window.ui = ui;
+  };
+</script>
+
+<style>
+  #swagger-ui {
+    min-height: 800px;
+  }
+  .swagger-ui .topbar {
+    display: none;
+  }
+  .swagger-ui .info {
+    margin: 20px 0;
+  }
+  .swagger-ui .info .title {
+    color: #1a1a2e;
+  }
+</style>
+
+## Endpoints principales
+
+### Autenticación (`/auth`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/auth/register` | Registrar usuario + tenant |
+| POST | `/auth/login` | Login, retorna access+refresh token |
+| POST | `/auth/refresh` | Renovar access token |
+| GET | `/auth/me` | Usuario actual |
+| POST | `/auth/api-keys` | Crear API Key (requiere ADMIN) |
+| GET | `/auth/api-keys` | Listar API Keys |
+| DELETE | `/auth/api-keys/{id}` | Revocar API Key |
+
+### Servidores (`/api/v1/servers`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/servers/register` | Registrar/actualizar servidor (API Key) |
+| POST | `/servers/{id}/heartbeat` | Heartbeat (API Key) |
+| POST | `/servers/{id}/restart` | Encolar comando restart (JWT) |
+| GET | `/servers/{id}/commands` | Obtener comandos pendientes (API Key) |
+| PATCH | `/agent-commands/{id}/result` | Reportar resultado comando (API Key) |
+
+### Ingesta (`/api/v1/ingest`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/ingest/metrics` | Enviar métricas (API Key) |
+| POST | `/ingest/entities` | Enviar entidades (services, processes, jobs) |
+
+### API Keys (`/api/v1/api-keys`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/api-keys` | Crear API Key (JWT + ADMIN) |
+| GET | `/api-keys` | Listar API Keys |
+
+### Alertas (`/api/v1/alerts`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/alerts/rules` | Crear regla |
+| GET | `/alerts/rules` | Listar reglas |
+| GET | `/alerts/rules/{id}` | Obtener regla |
+| PATCH | `/alerts/rules/{id}` | Actualizar regla |
+| DELETE | `/alerts/rules/{id}` | Eliminar regla |
+| POST | `/alerts/{id}/ack` | Reconocer alerta |
+| POST | `/alerts/{id}/resolve` | Resolver alerta |
+| GET | `/alerts` | Listar alertas (filtros) |
+
+### Reportes (`/api/v1/reports`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/reports/generate` | Generar reporte async (202) |
+| POST | `/reports` | Crear reporte manual |
+| GET | `/reports` | Listar reportes |
+| GET | `/reports/{id}` | Obtener reporte |
+| DELETE | `/reports/{id}` | Cancelar reporte |
+
+### Invitaciones (`/api/v1/invitations`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/invitations` | Crear invitación (ADMIN) |
+| GET | `/invitations` | Listar invitaciones |
+| POST | `/invitations/accept/{token}` | Aceptar invitación (público) |
+
+### Dashboard (`/api/v1/dashboard`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/dashboard/overview` | Resumen tenant (servidores, alertas, métricas) |
+| GET | `/dashboard/metrics/history` | Histórico de métricas para gráficas |
+
+### Health Checks
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/healthz` | Liveness probe (200/503) |
+| GET | `/readyz` | Readiness probe (migraciones, DB, Redis) |
+
+## Códigos de error comunes
+
+| Código | Significado | Acción |
+|--------|-------------|--------|
+| 400 | Bad Request | Validación fallida (ver `detail`) |
+| 401 | Unauthorized | Token/API Key inválida o expirada |
+| 403 | Forbidden | Sin permisos (rol, plan, beta) |
+| 404 | Not Found | Recurso no existe |
+| 409 | Conflict | Duplicado (nombre, email, etc.) |
+| 422 | Unprocessable | Validación semántica fallida |
+| 429 | Too Many Requests | Rate limit excedido |
+| 503 | Service Unavailable | DB/Redis down (ver `/healthz`) |
+
+## Paginación y filtros
+
+```bash
+# Paginación estándar
+GET /api/v1/servers?offset=0&limit=50
+
+# Filtros comunes
+GET /api/v1/alerts?status=open&severity=critical
+GET /api/v1/reports?type=availability&status=completed
+GET /api/v1/servers?status=offline
+```
+
+## Versionado
+
+- La API usa prefix `/api/v1/`
+- Cambios breaking → nueva versión `/api/v2/`
+- Deprecation header: `Sunset: Sat, 01 Jan 2027 00:00:00 GMT`
+
+## SDKs y clientes
+
+- **OpenAPI Spec**: `/api/openapi.json` (para generar clientes)
+- **TypeScript**: `npm i @spsaas/api-client` (próximamente)
+- **Python**: `pip install spsaas-client` (próximamente)
+- **Go**: `go get github.com/spsaas/go-client` (próximamente)

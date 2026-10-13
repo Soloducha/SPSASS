@@ -1,0 +1,193 @@
+---
+title: "Instalación del Agente - Windows (NSSM)"
+description: "Instala y configura el agente SPSAAS en Windows usando NSSM"
+sidebar: "installation"
+order: 2
+---
+
+# Instalación del Agente en Windows (NSSM)
+
+Esta guía cubre la instalación del agente SPSAAS en **Windows Server 2016+ / Windows 10+** usando **NSSM (Non-Sucking Service Manager)** para ejecutar el agente como servicio de Windows.
+
+## Prerrequisitos
+
+- Windows Server 2016+ o Windows 10/11 Pro/Enterprise
+- PowerShell 5.1+ (incluido)
+- Acceso Administrador
+- Conectividad de red hacia tu instancia SPSAAS (puerto 443 HTTPS / 8000 HTTP)
+
+## Paso 1: Obtener tu API Key
+
+1. Inicia sesión en el dashboard SPSAAS
+2. Ve a **Configuración → API Keys**
+3. Crea una nueva API Key con nombre descriptivo (ej: `server-prod-win-01`)
+4. **Copia la clave completa** (solo se muestra una vez)
+
+## Paso 2: Descargar e instalar
+
+### Opción A: Script automatizado (Recomendado)
+
+Abrir **PowerShell como Administrador** y ejecutar:
+
+```powershell
+# Configurar variables
+$ApiKey = "spsk_xxxxxxxxxxxxx"
+$ApiUrl = "https://tu-instancia.spsaas.com"
+$ServiceName = "SPSAASAgent"
+$InstallDir = "C:\Program Files\SPSAAS Agent"
+
+# Ejecutar instalador
+irm "https://tu-instancia.spsaas.com/agent/install.ps1" | iex -ArgumentList @(
+    "--api-key", $ApiKey,
+    "--api-url", $ApiUrl,
+    "--service-name", $ServiceName,
+    "--install-dir", $InstallDir
+)
+```
+
+### Opción B: Instalación manual
+
+```powershell
+# 1. Crear directorio de instalación
+$InstallDir = "C:\Program Files\SPSAAS Agent"
+New-Item -ItemType Directory -Force -Path $InstallDir
+
+# 2. Descargar agente (ajusta URL)
+$AgentUrl = "https://tu-instancia.spsaas.com/agent/download/windows/amd64"
+$AgentPath = "$InstallDir\spsaas-agent.exe"
+Invoke-WebRequest -Uri $AgentUrl -OutFile $AgentPath
+
+# 3. Descargar NSSM
+$NssmUrl = "https://github.com/nssm/nssm/releases/download/v2.24/nssm-2.24.zip"
+$ZipPath = "$env:TEMP\nssm.zip"
+Invoke-WebRequest -Uri $NssmUrl -OutFile $ZipPath
+Expand-Archive -Path $ZipPath -DestinationPath "$env:TEMP\nssm" -Force
+Copy-Item "$env:TEMP\nssm\win64\nssm.exe" "$InstallDir\nssm.exe" -Force
+
+# 4. Crear configuración
+$Config = @"
+api:
+  url: "$ApiUrl"
+  api_key: "$ApiKey"
+
+server:
+  hostname: "$env:COMPUTERNAME"
+  ip: "auto"
+
+collection:
+  interval_seconds: 30
+  metrics:
+    - cpu
+    - memory
+    - disk
+    - network
+    - processes
+    - services
+
+logging:
+  level: "info"
+  file: "C:\ProgramData\SPSAAS Agent\logs\agent.log"
+  max_size_mb: 100
+  max_files: 5
+"@
+
+$ConfigPath = "$InstallDir\config.yaml"
+New-Item -ItemType Directory -Force -Path (Split-Path $ConfigPath)
+$Config | Out-File -FilePath $ConfigPath -Encoding utf8
+
+# 5. Crear directorios de logs
+New-Item -ItemType Directory -Force -Path "C:\ProgramData\SPSAAS Agent\logs"
+```
+
+## Paso 3: Instalar servicio con NSSM
+
+```powershell
+# Instalar servicio
+$InstallDir = "C:\Program Files\SPSAAS Agent"
+$AgentExe = "$InstallDir\spsaas-agent.exe"
+$ConfigFile = "$InstallDir\config.yaml"
+
+nssm install "SPSAASAgent" "$AgentExe" "--config `"$ConfigFile`""
+nssm set "SPSAASAgent" DisplayName "SPSAAS Monitoring Agent"
+nssm set "SPSAASAgent" Description "SPSAAS Monitoring Agent for Windows"
+nssm set "SPSAASAgent" AppDirectory "$InstallDir"
+nssm set "SPSAASAgent" AppStdout "C:\ProgramData\SPSAAS Agent\logs\agent-stdout.log"
+nssm set "SPSAASAgent" AppStderr "C:\ProgramData\SPSAAS Agent\logs\agent-stderr.log"
+nssm set "SPSAASAgent" AppRotateFiles 1
+nssm set "SPSAASAgent" AppRotateBytes 104857600  # 100MB
+
+# Configurar recuperación ante fallos
+nssm set "SPSAASAgent" Start SERVICE_AUTO_START
+nssm set "SPSAASAgent" AppExit Default Restart
+nssm set "SPSAASAgent" AppRestartDelay 10000
+
+# Iniciar servicio
+nssm start "SPSAASAgent"
+```
+
+## Paso 4: Verificar
+
+```powershell
+# Estado del servicio
+Get-Service SPSAASAgent
+
+# Logs del servicio
+Get-EventLog -LogName Application -Source SPSAASAgent -Newest 20
+
+# Logs de la aplicación
+Get-Content "C:\ProgramData\SPSAAS Agent\logs\agent.log" -Wait -Tail 50
+
+# Verificar que reporta métricas (si expones endpoint local)
+Invoke-WebRequest -Uri "http://localhost:9090/metrics"
+```
+
+En el dashboard SPSAAS deberías ver el servidor aparecer en **Servidores** con estado **Online** dentro de 1-2 minutos.
+
+## Actualización del agente
+
+```powershell
+# Detener servicio
+nssm stop SPSAASAgent
+
+# Descargar nueva versión
+$AgentUrl = "https://tu-instancia.spsaas.com/agent/download/windows/amd64"
+$AgentPath = "C:\Program Files\SPSAAS Agent\spsaas-agent.exe"
+Invoke-WebRequest -Uri $AgentUrl -OutFile $AgentPath
+
+# Reiniciar
+nssm start SPSAASAgent
+```
+
+## Desinstalación
+
+```powershell
+# Detener y eliminar servicio
+nssm stop SPSAASAgent
+nssm remove SPSAASAgent confirm
+
+# Limpiar archivos
+Remove-Item "C:\Program Files\SPSAAS Agent" -Recurse -Force
+Remove-Item "C:\ProgramData\SPSAAS Agent" -Recurse -Force
+```
+
+## Solución de problemas
+
+| Problema | Solución |
+|----------|----------|
+| Servicio no inicia | `nssm status SPSAASAgent` y revisar `C:\ProgramData\SPSAAS Agent\logs\agent-stderr.log` |
+| "Access denied" en NSSM | Ejecutar PowerShell **como Administrador** |
+| No aparece en dashboard | Verificar API Key y conectividad: `Test-NetConnection -ComputerName tu-instancia.spsaas.com -Port 443` |
+| Métricas incompletas | El agente necesita permisos de Administrador para WMI/Performance Counters |
+| Firewall bloquea | Permitir salida TCP 443/8000: `New-NetFirewallRule -DisplayName "SPSAAS Agent" -Direction Outbound -Protocol TCP -RemotePort 443,8000 -Action Allow` |
+
+## Configuración avanzada: Variables de entorno
+
+Puedes sobrescribir configuración via variables de entorno del servicio:
+
+```powershell
+nssm set SPSAASAgent AppEnvironmentExtra SPSAAS_API_KEY=spsk_xxx
+nssm set SPSAASAgent AppEnvironmentExtra SPSAAS_API_URL=https://otra-instancia.spsaas.com
+nssm set SPSAASAgent AppEnvironmentExtra SPSAAS_LOG_LEVEL=debug
+```
+
+Las variables de entorno tienen prioridad sobre `config.yaml`.

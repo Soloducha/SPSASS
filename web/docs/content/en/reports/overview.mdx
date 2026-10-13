@@ -1,0 +1,223 @@
+---
+title: "Reportes - Visión General"
+description: "Genera reportes programados o bajo demanda: disponibilidad, incidentes, alertas, SLA, métricas"
+sidebar: "reports"
+order: 1
+---
+
+# Reportes - Visión General
+
+SPSAAS permite generar **reportes bajo demanda** o **programados** sobre la salud de tu infraestructura. Los reportes se generan de forma asíncrona y están disponibles en formato JSON (API) y visualización web.
+
+## Tipos de reporte
+
+| Tipo | Descripción | Caso de uso |
+|------|-------------|-------------|
+| **availability** | % uptime/downtime por servidor/servicio | SLA mensual, reviews de infraestructura |
+| **incidents** | Catálogo de episodios de alerta con gaps | Post-mortems, análisis de recurrencia |
+| **alerts** | Catálogo de alertas (open/ack/resolved) | Auditoría, compliance |
+| **sla** | Cumplimiento de objetivos de disponibilidad | Reporting ejecutivo, clientes |
+| **metrics** | Series temporales de métricas (rollups) | Análisis de tendencias, capacity planning |
+
+## Generar un reporte
+
+### Desde la Web UI
+
+1. Ve a **Reportes → Generar**
+2. Selecciona **Tipo de reporte**
+3. Define **Período** (inicio/fin)
+4. Opcional: Filtros (servidor, severidad, etc.)
+5. Clic **Generar** → Estado `PENDING` → `COMPLETED`
+
+### Via API
+
+```bash
+# Generar reporte de disponibilidad del mes pasado
+curl -X POST https://tu-instancia.spsaas.com/api/v1/reports/generate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "availability",
+    "period_start": "2026-09-01T00:00:00Z",
+    "period_end": "2026-09-30T23:59:59Z",
+    "params": { "server_id": "uuid-opcional" }
+  }'
+
+# Respuesta: 202 Accepted + Location header
+# Location: /api/v1/reports/{report_id}
+```
+
+### Polling para obtener resultado
+
+```bash
+# Consultar estado
+curl -H "Authorization: Bearer $TOKEN" \
+  https://tu-instancia.spsaas.com/api/v1/reports/{report_id}
+
+# Cuando status=COMPLETED, el payload contiene los datos
+```
+
+## Parámetros por tipo de reporte
+
+### Availability (`type: "availability"`)
+
+```json
+{
+  "type": "availability",
+  "period_start": "2026-09-01T00:00:00Z",
+  "period_end": "2026-09-30T23:59:59Z",
+  "params": {
+    "server_id": "uuid",           // Opcional: filtrar por servidor
+    "include_services": true,      // Incluir disponibilidad de servicios
+    "target_uptime": 99.9          // Objetivo para SLA (opcional)
+  }
+}
+```
+
+**Salida**: Por servidor/servicio → uptime %, downtime total, incidentes, MTTR.
+
+### Incidents (`type: "incidents"`)
+
+```json
+{
+  "type": "incidents",
+  "period_start": "2026-09-01T00:00:00Z",
+  "period_end": "2026-09-30T23:59:59Z",
+  "params": {
+    "rule_id": "uuid",             // Opcional: filtrar por regla
+    "severity": "warning",         // Filtrar: info/warning/critical
+    "status": "resolved",          // open/ack/resolved
+    "group_by": "rule"             // rule/server/none
+  }
+}
+```
+
+**Salida**: Lista de episodios con start/end, duración, severidad, regla, entidad.
+
+### Alerts (`type: "alerts"`)
+
+```json
+{
+  "type": "alerts",
+  "period_start": "2026-09-01T00:00:00Z",
+  "period_end": "2026-09-30T23:59:59Z",
+  "params": {
+    "rule_id": "uuid",
+    "entity_type": "server",
+    "status": "open",              // open/ack/resolved
+    "severity": "critical"
+  }
+}
+```
+
+**Salida**: Alertas individuales con estado, timestamps, entidad, métrica, valor.
+
+### SLA (`type: "sla"`)
+
+```json
+{
+  "type": "sla",
+  "period_start": "2026-09-01T00:00:00Z",
+  "period_end": "2026-09-30T23:59:59Z",
+  "params": {
+    "server_id": "uuid",
+    "target_uptime": 99.9,         // Objetivo % (ej: 99.9 = "three nines")
+    "business_hours_only": false,  // Solo horario laboral
+    "timezone": "America/Argentina/Buenos_Aires"
+  }
+}
+```
+
+**Salida**: % uptime real vs objetivo, downtime permitido vs real, presupuesto de error consumido.
+
+### Metrics (`type: "metrics"`)
+
+```json
+{
+  "type": "metrics",
+  "period_start": "2026-09-01T00:00:00Z",
+  "period_end": "2026-09-30T23:59:59Z",
+  "params": {
+    "server_id": "uuid",
+    "metrics": ["cpu_usage", "memory_usage", "disk_usage"],
+    "aggregation": "1h",           // 1m, 5m, 1h, 1d (rollup)
+    "max_points": 1000             // Downsampling automático
+  }
+}
+```
+
+**Salida**: Series temporales con count, avg, min, max, last por bucket.
+
+## Reportes programados
+
+### Crear schedule (via API)
+
+```bash
+curl -X POST https://tu-instancia.spsaas.com/api/v1/reports/schedules \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Monthly Availability Report",
+    "type": "availability",
+    "cron": "0 6 1 * *",           // 6 AM el día 1 de cada mes
+    "timezone": "America/Argentina/Buenos_Aires",
+    "params": { "target_uptime": 99.9 },
+    "delivery": {
+      "channels": ["email"],
+      "email": { "to": ["ops@empresa.com", "cto@empresa.com"] }
+    }
+  }'
+```
+
+### Entrega programada
+
+Los reportes programados se entregan via canales configurados:
+- **Email**: Adjunto JSON + resumen HTML
+- **Webhook**: Payload JSON al endpoint configurado
+
+## Límites por plan
+
+| Plan | Reportes/mes | Tipos disponibles |
+|------|--------------|-------------------|
+| Free | 1 | availability |
+| Starter | 5 | availability, incidents, alerts |
+| Growth | 20 | todos |
+| Enterprise | ∞ | todos + custom |
+
+## Referencia API
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `POST /api/v1/reports/generate` | Generar reporte async (202 + Location) |
+| `POST /api/v1/reports` | Crear reporte manual (201) |
+| `GET /api/v1/reports` | Listar reportes (filtros, paginación) |
+| `GET /api/v1/reports/{id}` | Obtener reporte con payload completo |
+| `DELETE /api/v1/reports/{id}` | Cancelar/borrar reporte (soft delete) |
+| `POST /api/v1/reports/schedules` | Crear schedule programado |
+| `GET /api/v1/reports/schedules` | Listar schedules |
+
+## Ejemplo completo: Reporte mensual automatizado
+
+```bash
+#!/bin/bash
+# monthly-report.sh - Ejecutar via cron el día 1 a las 6 AM
+
+TOKEN=$(curl -s -X POST https://api.spsaas.com/auth/login \
+  -d '{"email":"bot@empresa.com","password":"xxx"}' | jq -r .access_token)
+
+REPORT_ID=$(curl -s -X POST https://api.spsaas.com/api/v1/reports/generate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"availability","period_start":"'$(date -d "last month" +%Y-%m-01)'T00:00:00Z","period_end":"'$(date -d "last month" +%Y-%m-%d)'T23:59:59Z"}' | jq -r .id)
+
+# Poll hasta completado
+while true; do
+  STATUS=$(curl -s -H "Authorization: Bearer $TOKEN" https://api.spsaas.com/api/v1/reports/$REPORT_ID | jq -r .status)
+  [[ "$STATUS" == "COMPLETED" ]] && break
+  sleep 10
+done
+
+# Descargar y enviar por email
+curl -s -H "Authorization: Bearer $TOKEN" https://api.spsaas.com/api/v1/reports/$REPORT_ID > /tmp/report.json
+mail -s "SPSAAS Monthly Report - $(date +%B)" ops@empresa.com < /tmp/report.json
+```

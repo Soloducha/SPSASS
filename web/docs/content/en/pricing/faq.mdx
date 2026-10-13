@@ -1,0 +1,219 @@
+---
+title: "Preguntas Frecuentes - Precios"
+description: "Respuestas a las dudas más comunes sobre planes, facturación, límites y migraciones"
+sidebar: "pricing"
+order: 1
+---
+
+# Preguntas Frecuentes
+
+## Facturación y Pagos
+
+### ¿Cómo funciona la facturación?
+
+La facturación es **mensual o anual** (con 20% de descuento en anual). Se cobra al inicio de cada período. Los planes pagos se renuevan automáticamente salvo cancelación.
+
+### ¿Qué métodos de pago aceptan?
+
+- Tarjetas de crédito/débito (Visa, Mastercard, Amex) via Stripe
+- Transferencia bancaria (solo planes Growth y Enterprise, factura anual)
+- PayPal (próximamente)
+
+### ¿Hay contratos de permanencia?
+
+**No.** Puedes cancelar en cualquier momento. El servicio sigue activo hasta el final del período pagado. No hay penalizaciones ni cláusulas de permanencia.
+
+### ¿Puedo cambiar de plan en cualquier momento?
+
+**Sí.** 
+- **Upgrade**: Efectivo inmediato, se cobra la diferencia prorrateada.
+- **Downgrade**: Efectivo al final del período actual. Recibirás aviso si excedes límites del nuevo plan.
+
+### ¿Qué pasa si excedo los límites de mi plan?
+
+Recibirás alertas al 80%, 90% y 100% del límite. Al alcanzar el 100%:
+- **Servidores/API Keys/Reportes**: Se bloquea la creación de nuevos recursos (403)
+- **Miembros**: No se pueden invitar más usuarios
+- **Retención**: Métricas antiguas se empiezan a purgar según la política del plan
+
+## Planes y Características
+
+### ¿Qué incluye el plan Free?
+
+El plan Free es **gratis para siempre** (no es trial). Incluye:
+- 3 servidores
+- 1 API Key
+- 1 reporte/mes
+- 3 miembros
+- Retención 7 días
+- Alertas por Email
+- Dashboards básicos
+
+Ideal para: proyectos personales, pruebas, desarrollo local.
+
+### ¿Cuál es la diferencia entre Starter y Growth?
+
+| | Starter ($29/mes) | Growth ($99/mes) |
+|---|---|---|
+| **Servidores** | 10 | 50 |
+| **API Keys** | 5 | 20 |
+| **Reportes/mes** | 5 | 20 |
+| **Miembros** | 10 | 50 |
+| **Retención** | 30 días | 90 días |
+| **Canales alerta** | Email + Telegram | Email + Telegram + WhatsApp |
+| **Webhooks** | ❌ | ✅ |
+| **Soporte** | Estándar | Prioritario (4h) |
+
+### ¿Qué incluye Enterprise que no tienen los otros planes?
+
+- **Recursos ilimitados** (servidores, API keys, reportes, miembros)
+- **Retención 365 días** + archivado a largo plazo
+- **Todos los canales**: Email, Telegram, WhatsApp, Webhook, Slack, PagerDuty
+- **White-label**: Dashboards con tu marca, dominio personalizado
+- **SSO/SAML + SCIM**: Integración con Azure AD, Okta, Google Workspace
+- **On-premise / VPC privado**: Despliegue en tu infraestructura
+- **Soporte 24/7 dedicado** con SLA 99.99%
+- **Compliance**: SOC 2, ISO 27001, GDPR, auditoría completa
+- **SLA 99.99%** con créditos por indisponibilidad
+- **On-premise / VPC privado**: Despliegue en tu infraestructura
+
+### ¿Puedo tener servidores en múltiples regiones/clouds?
+
+**Sí.** El agente es agnóstico a la infraestructura. Puedes instalarlo en:
+- AWS, GCP, Azure, DigitalOcean, Hetzner, etc.
+- On-premise (bare metal, VMware, Proxmox)
+- Edge locations, Raspberry Pi, etc.
+
+Cada servidor reporta a tu tenant único.
+
+## Agente e Instalación
+
+### ¿El agente consume muchos recursos?
+
+**No.** Diseñado para ser ligero:
+- **CPU**: ~1-2% en idle, ~3-5% durante recolección (cada 30s)
+- **RAM**: ~15-30 MB
+- **Red**: ~50-200 KB/min por servidor
+- **Disco**: Logs rotativos (~10 MB/día)
+
+### ¿Funciona en Windows y Linux?
+
+**Sí, nativamente.**
+- **Linux**: systemd service (Ubuntu 18.04+, Debian 10+, CentOS/RHEL 7+, Fedora, Alpine)
+- **Windows**: NSSM service (Windows Server 2016+, Windows 10/11 Pro/Enterprise)
+- **Contenedores**: Docker image disponible (próximamente)
+
+### ¿Necesito abrir puertos de entrada?
+
+**No.** El agente solo hace conexiones **salientes** (HTTPS 443 / HTTP 8000) hacia tu instancia SPSAAS. No requiere puertos abiertos ni VPN.
+
+### ¿Qué métricas recolecta el agente?
+
+**Sistema**: CPU, memoria, disco, red, load average, uptime
+**Procesos**: CPU, memoria, hilos, FDs abiertos, estado (systemd)
+**Servicios**: Estado, uptime, métricas custom via API
+**Jobs**: Ejecuciones, duración, código de salida, output
+**Red**: RX/TX bytes, paquetes, errores, drops
+**Contenedores**: (Próximamente) Docker/Podman stats
+
+## Seguridad y Privacidad
+
+### ¿Dónde se almacenan mis datos?
+
+- **SaaS (cloud)**: AWS eu-west-1 (Frankfurt) / us-east-1 (Virginia)
+- **Enterprise**: Tu VPC, on-premise, o región AWS/GCP/Azure de tu elección
+- **Backups**: Diarios, encriptados, retención 30 días (configurable en Enterprise)
+
+### ¿Mis métricas son privadas?
+
+**Sí.**
+- Encriptación en tránsito (TLS 1.3) y en reposo (AES-256)
+- Aislamiento por tenant (RLS en PostgreSQL + row-level security)
+- Tu organización solo ve sus datos
+- No vendemos ni compartimos datos con terceros
+
+### ¿Cumplen GDPR / SOC 2 / ISO 27001?
+
+- **GDPR**: Sí, DPA disponible, derecho al olvido, portabilidad
+- **SOC 2 Type II**: En proceso (Enterprise)
+- **ISO 27001**: En proceso (Enterprise)
+- **HIPAA**: BAA disponible (Enterprise)
+
+## Migraciones y Soporte
+
+### ¿Puedo migrar desde Datadog / New Relic / Prometheus / Grafana?
+
+**Sí.** Ofrecemos:
+- **Importación de dashboards** (JSON Grafana → SPSAAS)
+- **Migración de alertas** (reglas PromQL → reglas SPSAAS)
+- **Script de migración** para servidores existentes
+- **Soporte guiado** (Growth+) o **llave en mano** (Enterprise)
+
+### ¿Qué soporte incluye cada plan?
+
+| | Free | Starter | Growth | Enterprise |
+|---|---|---|---|---|
+| **Canal** | Email (48h) | Email (24h) | Email + Slack (4h) | 24/7 Teléfono + Slack (1h) |
+| **SLA** | Best effort | 99.9% | 99.95% | 99.99% |
+| **Onboarding** | Self-service | Guiado | Dedicado | Llave en mano |
+| **CSM** | ❌ | ❌ | ✅ | ✅ |
+
+### ¿Cómo contacto a soporte?
+
+- **Email**: support@spsaas.com
+- **Slack**: #spsaas-support (invite en dashboard, planes Growth+)
+- **Dashboard**: Botón "Ayuda → Chat con soporte"
+- **Enterprise**: Teléfono directo + Slack Connect dedicado
+
+## API y Desarrollo
+
+### ¿Hay API pública?
+
+**Sí.** API REST completa en `/api/v1/` con:
+- OpenAPI 3.0 spec en `/api/openapi.json`
+- Swagger UI en `/docs/api`
+- SDKs: TypeScript, Python, Go (próximamente)
+- Webhooks para eventos en tiempo real
+
+### ¿Hay rate limiting en la API?
+
+**Sí, por plan:**
+- Free: 60 req/min
+- Starter: 200 req/min
+- Growth: 1,000 req/min
+- Enterprise: 5,000 req/min
+
+Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+
+### ¿Puedo usar Terraform / Pulumi / Ansible?
+
+**Sí.** Provider Terraform oficial (próximamente), módulos Ansible community, API REST para todo lo demás.
+
+## Otros
+
+### ¿Ofrecen descuentos para startups / ONGs / educación?
+
+**Sí.**
+- **Startups** (< 2 años, < $5M funding): 50% off primer año (Growth)
+- **ONGs / Educación**: 50% off permanente (Starter/Growth)
+- **Open Source**: Plan Free ilimitado para proyectos open source públicos
+
+Contacta ventas con detalles de tu organización.
+
+### ¿Hay programa de referidos?
+
+**Sí.** Por cada referral que contrate un plan pago:
+- Tú obtienes 1 mes gratis
+- Ellos obtienen 10% off primer año
+- Sin límite de referidos
+
+### ¿Puedo probar antes de comprar?
+
+**Sí.**
+- **Free**: Gratis para siempre, sin tarjeta
+- **Starter/Growth**: 14 días trial completo (sin tarjeta)
+- **Enterprise**: Demo guiada + POC de 30 días
+
+---
+
+¿No encontraste tu respuesta? [Contáctanos](/contact) y te respondemos en < 24h.

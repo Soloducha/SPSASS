@@ -2,6 +2,7 @@
 
 from app.api.v1.alerts import router as alerts_router
 from app.api.v1.api_keys import router as api_keys_router
+from app.api.v1.beta import router as beta_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.ingest import router as ingest_router
 from app.api.v1.invitations import router as invitations_router
@@ -13,6 +14,7 @@ from app.api.v1.services import router as services_router
 
 __all__ = [
     "api_keys_router",
+    "beta_router",
     "servers_router",
     "ingest_router",
     "dashboard_router",

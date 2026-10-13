@@ -153,8 +153,8 @@ reports(id, tenant_id, period_start, period_end, type, payload JSONB, generated_
 | **2** | Agente + ingesta | Agente Go v1 (CPU/mem/disco/load), heartbeat, API de ingesta, rollups, dashboard v0.1 (estado general, servidores) |
 | **3** | Alertas | Alert Engine, reglas, dedupe/escalado, canal **Telegram + Email** |
 | **4** | Procesos + jobs | Servicios/procesos con auto-restart, job monitor cron/batch, detección de errores, canal **WhatsApp** |
-| **5** | Reportes | Disponibilidad, incidentes, alertas generadas, **SLA**, métricas históricas en dashboard |
-| **6** | Pulido + beta | Onboarding, invitaciones, plan gates, hardening, **beta cerrada con 3–5 pilotos**, docs, pricing page |
+| **5** | Reportes | Disponibilidad, incidentes, alertas generadas, **SLA**, métricas históricas en dashboard | ✅ Entregado |
+| **6** | Pulido + beta | Onboarding, invitaciones, plan gates, hardening, **beta cerrada con 3–5 pilotos**, docs, pricing page | 🚧 Código completo, operativa pendiente (onboarding pilotos + Slack) |
 
 **Iteración clave**: cada mes termina con algo demostrable al cliente. Mes 2 ya mostramos servidores monitoreados.
 

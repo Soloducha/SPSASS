@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { FeedbackWidget } from '@/components/FeedbackWidget';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -54,6 +55,7 @@ export default function RootLayout({
             SPSAAS — Monitoreo para entornos legacy y Linux
           </div>
         </footer>
+        <FeedbackWidget />
       </body>
     </html>
   );

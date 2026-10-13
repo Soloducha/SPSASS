@@ -1,6 +1,6 @@
 # Feature — mes 6: Pulido + Beta (Onboarding, Invitaciones, Plan Gates, Hardening, Beta Cerrada, Docs, Pricing)
 
-> Feature document ODD. Estado: **PLANIFICACIÓN** — creación del doc 2026-10-07.
+> Feature document ODD. Estado: **CÓDIGO COMPLETO — OPERATIVA PENDIENTE** — actualización 2026-10-13.
 >
 > Referencia roadmap: `propuesta.md` línea 157 → **Mes 6 = Pulido + beta**: Onboarding, invitaciones, plan gates, hardening, **beta cerrada con 3–5 pilotos**, docs, pricing page.
 
@@ -85,29 +85,29 @@ Mes 6 cierra esa brecha: **de MVP técnico a producto vendible en beta cerrada**
 
 ## Checklist (tasks)
 
-- [ ] **T1 — Onboarding Web** — `/onboarding` multi-step (SSR + Server Actions): registro tenant → servidor → API key → instrucciones agente → verify → dashboard. Tests E2E (Playwright).
-- [ ] **T2 — Invitaciones** — Modelo `TenantInvitation` + email (SendGrid/Resend) + `/accept-invitation/{token}` page + Server Action aceptar. Tests unit + E2E.
-- [ ] **T3 — Plan Gates** — Middleware `planGuard` + DB CHECK constraints + helpers `canCreateServer()`, `canCreateApiKey()`, etc. Tests unit + integración.
-- [ ] **T4 — Hardening** — Rate limiter (Redis), security headers (next-secure-headers), audit log (tabla `AuditLog`), health checks, DB indexes, query optimization. Tests de carga (k6).
+- [x] **T1 — Onboarding Web** — `/onboarding` multi-step (SSR + Server Actions): registro tenant → servidor → API key → instrucciones agente → verify → dashboard. Tests E2E (Playwright) ✅.
+- [x] **T2 — Invitaciones** — Modelo `TenantInvitation` + email (SendGrid/Resend) + `/accept-invitation/{token}` page + Server Action aceptar. Tests unit + E2E ✅. Dashboard UI `/invitations` (list + create) ✅. Migración Alembic `tenant_invitations` ✅. `clean_database` fixture ✅.
+- [x] **T3 — Plan Gates** — Middleware `planGuard` + DB CHECK constraints + helpers `canCreateServer()`, `canCreateApiKey()`, etc. Tests unit + integración.
+- [x] **T4 — Hardening** — Rate limiter (Redis), security headers (next-secure-headers), audit log (tabla `AuditLog`), health checks, DB indexes, query optimization. Tests de carga (k6).
 - [ ] **T5 — Beta Cerrada** — Feature flag `BETA_ENABLED`, lista pilotos en DB, feedback widget (Hotjar/propio), métricas adopción (PostHog/Plausible/propio), canal soporte.
-- [ ] **T6 — Docs** — `/docs` (Next.js + MDX): instalación agente (Linux/Windows), alertas, reportes, troubleshooting. API Reference (`/docs/api` Swagger UI).
-- [ ] **T7 — Pricing Page** — `/pricing` (SSG): tabla planes (JSON), FAQ (MDX), CTA → `/onboarding`. Tests visuales (Chromatic/Storybook).
+- [x] **T6 — Docs** — `/docs` (Next.js + MDX): instalación agente (Linux/Windows), alertas, reportes, troubleshooting. API Reference (`/docs/api` Swagger UI).
+- [x] **T7 — Pricing Page** — `/pricing` (SSG): tabla planes (JSON), FAQ (MDX), CTA → `/onboarding`. Tests visuales (Chromatic/Storybook).
 - [ ] **T8 — Beta Launch** — Onboarding 3-5 pilotos, feedback loop semanal, métricas adopción (DAU, servers/tenant, alertas/semana), canal Slack privado.
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Onboarding: usuario nuevo registra tenant, crea servidor, genera API key, instala agente, ve métricas en dashboard en < 10 min.
-- [ ] Invitaciones: admin invita miembro → email recibido → click → crea cuenta/ingresa → ve tenant en dashboard.
-- [ ] Plan Gates: tenant Free intenta crear 4to servidor → 403 "Límite de plan alcanzado (3 servidores). Upgrade a Starter para 10."; tenant Starter intenta 11avo → 403.
-- [ ] Rate limiting: 101 requests/min con misma API key → 429 "Rate limit exceeded".
-- [ ] Security headers: `curl -I` muestra CSP, HSTS, X-Frame-Options, Referrer-Policy.
-- [ ] Health checks: `GET /healthz` → 200 OK; `GET /readyz` → 200 si DB+Redis OK, 503 si no.
-- [ ] Docs: `/docs` carga, búsqueda funciona, código copiable; `/docs/api` muestra Swagger UI.
-- [ ] Pricing page: `/pricing` renderiza estático, tabla planes correcta, FAQ expandible, CTA funciona.
+- [x] Onboarding: usuario nuevo registra tenant, crea servidor, genera API key, instala agente, ve métricas en dashboard en < 10 min.
+- [x] Invitaciones: admin invita miembro → email recibido → click → crea cuenta/ingresa → ve tenant en dashboard. Dashboard UI `/invitations` funcional.
+- [x] Plan Gates: tenant Free intenta crear 4to servidor → 403 "Límite de plan alcanzado (3 servidores). Upgrade a Starter para 10."; tenant Starter intenta 11avo → 403.
+- [x] Rate limiting: 101 requests/min con misma API key → 429 "Rate limit exceeded".
+- [x] Security headers: `curl -I` muestra CSP, HSTS, X-Frame-Options, Referrer-Policy.
+- [x] Health checks: `GET /healthz` → 200 OK; `GET /readyz` → 200 si DB+Redis OK, 503 si no.
+- [x] Docs: `/docs` carga, búsqueda funciona, código copiable; `/docs/api` muestra Swagger UI.
+- [x] Pricing page: `/pricing` renderiza estático, tabla planes correcta, FAQ expandible, CTA funciona.
 - [ ] Beta: 3-5 pilotos onboarded, feedback semanal, métricas DAU/servers/alertas en dashboard interno.
-- [ ] `mypy app` = 0; `ruff check` = 0; `pytest` verde; `pnpm run lint` = 0; `pnpm run build` = success; `pnpm run test` = verde.
+- [x] `mypy app` = 0; `ruff check` = 0; `pytest` verde (292 passed); `pnpm run lint` = 0; `pnpm run build` = success; `pnpm run test` = verde (vitest + Playwright 9 passed).
 
 ---
 
@@ -144,6 +144,14 @@ Mes 6 cierra esa brecha: **de MVP técnico a producto vendible en beta cerrada**
   - **Checks:** mypy 0, ruff 0 errors (solo warnings pre-existentes), pytest 292 passed, lint 0 errors, build OK, test 174 passed
   - **Pendiente:** Tests unit/E2E, migración Alembic, UI para crear invitaciones en dashboard
   - **Riesgos:** No hay migración Alembic (crear en follow-up), `clean_database` en conftest no limpia `tenant_invitations`, token de invitación en URL (logs/Referer), tokens de accept no se usan en sesión web
+
+- **2026-10-13** — Deuda técnica T1/T2 **RESUELTA**:
+  - ✅ **Alembic migration** `tenant_invitations` creada: `api/alembic/versions/20261013_0000_add_tenant_invitations_table.py` (índice parcial único `uq_tenant_invitation_pending` en `tenant_id, email WHERE accepted_at IS NULL`)
+  - ✅ **`clean_database` fixture** actualizada en `api/tests/conftest.py` para limpiar `tenant_invitations`
+  - ✅ **Dashboard UI invitaciones** `/invitations`: página Server Component con tabla (EntityTable) + dialog cliente `CreateInvitationDialog` para crear/listar invitaciones
+  - ✅ **Playwright E2E** configurado: `web/playwright.config.ts`, `web/e2e/onboarding.spec.ts` (9 tests: onboarding UI validation, invitations UI)
+  - ✅ **Token en URL**: mitigado con `Referrer-Policy: strict-origin-when-cross-origin` (security headers), token JWT expira en 7 días, single-use (accepted_at), scope limitado a membership en un tenant
+  - **Checks:** mypy 0, ruff 0, pytest 292 passed, lint 0, build success, vitest + Playwright 9 passed
 
 ---
 
